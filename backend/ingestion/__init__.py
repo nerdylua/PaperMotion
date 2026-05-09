@@ -29,6 +29,11 @@ from .arxiv_fetcher import (
     normalize_arxiv_id,
     validate_arxiv_id,
 )
+from .pdf_fetcher import (
+    download_pdf_from_url,
+    derive_pdf_paper_id,
+    guess_title_from_url,
+)
 from .pdf_parser import parse_pdf
 from .html_parser import parse_html, fetch_and_parse_html
 from .section_extractor import extract_sections
@@ -129,6 +134,70 @@ async def ingest_paper(
     return paper
 
 
+async def ingest_pdf_url(
+    pdf_url: str,
+    force_refresh: bool = False,
+) -> StructuredPaper:
+    """
+    Ingest a paper from a public PDF URL.
+
+    Args:
+        pdf_url: Direct PDF URL
+        force_refresh: If True, bypass cache and re-fetch
+
+    Returns:
+        StructuredPaper with metadata and extracted sections
+    """
+    paper_id = derive_pdf_paper_id(pdf_url)
+    logger.info("Starting ingestion for PDF: %s", paper_id)
+
+    if not force_refresh:
+        cached = await get_cached_paper(paper_id)
+        if cached:
+            logger.info("Returning cached PDF paper: %s", paper_id)
+            return cached
+
+    pdf_bytes, resolved_url = await download_pdf_from_url(pdf_url)
+    content = parse_pdf(pdf_bytes)
+
+    meta = ArxivPaperMeta(
+        arxiv_id=paper_id,
+        title=guess_title_from_url(resolved_url),
+        authors=[],
+        abstract="",
+        published=None,
+        updated=None,
+        categories=[],
+        pdf_url=resolved_url,
+        html_url=None,
+    )
+
+    sections = extract_sections(content, meta)
+    raw_count = len(sections)
+    total_chars = sum(len(s.content) for s in sections)
+    logger.info("Extracted %d raw sections (%d chars total)", raw_count, total_chars)
+
+    try:
+        sections = await format_sections(sections, meta)
+        logger.info(
+            "Section formatting succeeded: %d raw -> %d summarized sections",
+            raw_count,
+            len(sections),
+        )
+    except Exception as e:
+        logger.error(
+            "Section formatting FAILED (%s: %s). Falling back to raw sections.",
+            type(e).__name__,
+            e,
+        )
+
+    paper = StructuredPaper(meta=meta, sections=sections)
+    await cache_paper(paper)
+
+    logger.info("Ingestion complete for PDF: %s", paper_id)
+    return paper
+
+
 async def _parse_pdf_content(pdf_url: str) -> ParsedContent:
     """Helper to download and parse PDF."""
     logger.info(f"Downloading PDF: {pdf_url}")
@@ -174,6 +243,7 @@ def clear_cache() -> None:
 __all__ = [
     # Main function
     "ingest_paper",
+    "ingest_pdf_url",
 
     # Cache functions
     "get_cached_paper",
@@ -183,6 +253,7 @@ __all__ = [
     # Lower-level functions for flexibility
     "fetch_paper_meta",
     "download_pdf",
+    "download_pdf_from_url",
     "fetch_html_content",
     "parse_pdf",
     "parse_html",
@@ -191,6 +262,8 @@ __all__ = [
     "format_sections",
     "normalize_arxiv_id",
     "validate_arxiv_id",
+    "derive_pdf_paper_id",
+    "guess_title_from_url",
 
     # Models (re-exported for convenience)
     "ArxivPaperMeta",

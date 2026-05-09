@@ -6,6 +6,7 @@
 
 import { DEMO_PAPER_IDS, getDemoPaper, MOCK_PAPER, MOCK_STATUS } from "./mock-data";
 import type { Paper, ProcessingStatus, Section } from "./types";
+import type { PaperSource } from "./paper-source";
 
 // Toggle between mock and real API
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
@@ -23,6 +24,7 @@ export interface ProcessResponse {
   arxiv_id: string;
   status: JobStatus;
   message: string;
+  pdf_url?: string;
 }
 
 export interface StatusResponse {
@@ -91,25 +93,31 @@ function resolveVideoUrl(url: string | undefined | null): string | undefined {
 // === API Functions ===
 
 /**
- * Start processing an arXiv paper.
+ * Start processing a paper (arXiv ID or direct PDF URL).
  * Returns a job_id that can be polled for status.
  */
-export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
+export async function processPaper(source: PaperSource): Promise<ProcessResponse> {
   if (USE_MOCK) {
     // Simulate API delay
     await new Promise((r) => setTimeout(r, 500));
     return {
       job_id: "mock-job-" + Date.now(),
-      arxiv_id: arxivId,
+      arxiv_id: source.kind === "arxiv" ? source.arxivId : "pdf_mock",
       status: "queued",
       message: "Processing started (mock mode)",
+      pdf_url: source.kind === "pdf" ? source.pdfUrl : undefined,
     };
   }
+
+  const body =
+    source.kind === "arxiv"
+      ? { arxiv_id: source.arxivId }
+      : { pdf_url: source.pdfUrl };
 
   const res = await fetch(`${API_BASE}/api/process`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ arxiv_id: arxivId }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -118,6 +126,10 @@ export async function processArxivPaper(arxivId: string): Promise<ProcessRespons
   }
 
   return res.json();
+}
+
+export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
+  return processPaper({ kind: "arxiv", arxivId });
 }
 
 /**

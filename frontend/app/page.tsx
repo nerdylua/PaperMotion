@@ -7,32 +7,14 @@ import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-van
 import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import { GlassCard } from "@/components/ui/glass-card";
-
-function extractArxivId(inputRaw: string): string | null {
-  const input = inputRaw.trim();
-  if (!input) return null;
-
-  const directNew = input.match(/^\d{4}\.\d{4,5}(v\d+)?$/i);
-  if (directNew) return directNew[0];
-
-  const directOld = input.match(/^[a-z-]+(\.[a-z]{2})?\/\d{7}(v\d+)?$/i);
-  if (directOld) return directOld[0];
-
-  const urlAbs = input.match(/arxiv\.org\/abs\/([^?\s#]+)/i);
-  if (urlAbs?.[1]) return decodeURIComponent(urlAbs[1]).replace(/\/$/, "");
-
-  const urlPdf = input.match(/arxiv\.org\/pdf\/([^?\s#]+?)(?:\.pdf)?$/i);
-  if (urlPdf?.[1]) return decodeURIComponent(urlPdf[1]).replace(/\/$/, "");
-
-  return null;
-}
+import { parsePaperSource } from "@/lib/paper-source";
 
 const placeholders = [
-  "Paste an arXiv URL or ID...",
+  "Paste an arXiv URL or direct PDF link...",
   "1706.03762 (Attention Is All You Need)",
   "https://arxiv.org/abs/2005.14165",
   "2303.08774 (GPT-4 Technical Report)",
-  "1810.04805 (BERT)",
+  "https://proceedings.neurips.cc/paper_files/paper/2012/file/c399862d3b9d6b76c8436e924a68c45b-Paper.pdf",
 ];
 
 export default function Home() {
@@ -40,14 +22,18 @@ export default function Home() {
   const [value, setValue] = useState("");
   const [touched, setTouched] = useState(false);
 
-  const parsedId = useMemo(() => extractArxivId(value), [value]);
-  const canSubmit = Boolean(parsedId);
+  const parsedSource = useMemo(() => parsePaperSource(value), [value]);
+  const canSubmit = Boolean(parsedSource);
 
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setTouched(true);
-    if (!parsedId) return;
-    router.push(`/abs/${encodeURIComponent(parsedId)}`);
+    if (!parsedSource) return;
+    const target =
+      parsedSource.kind === "arxiv"
+        ? parsedSource.arxivId
+        : parsedSource.pdfUrl;
+    router.push(`/abs/${encodeURIComponent(target)}`);
   }
 
   return (
@@ -73,7 +59,7 @@ export default function Home() {
               transition={{ duration: 0.6, delay: 0.5 }}
               className="text-lg sm:text-xl text-white/40 max-w-2xl mx-auto leading-relaxed font-light"
             >
-              Paste any arXiv paper. Watch as it turns complex papers
+              Paste any arXiv paper or public PDF. Watch as it turns complex papers
               into digestible and <span className="text-white/60 font-medium">visually</span> appealing video explanations.
             </motion.p>
 
@@ -112,15 +98,17 @@ export default function Home() {
                 transition={{ delay: 1.0 }}
                 className="mt-4 h-6 text-sm"
               >
-                {parsedId ? (
+                {parsedSource ? (
                   <span className="text-[#7dd19b] flex items-center justify-center gap-2">
                     <span className="text-lg">✓</span>
                     <span>Detected:{" "}</span>
-                    <span className="font-mono bg-[#7dd19b]/10 px-2 py-0.5 rounded">{parsedId}</span>
+                    <span className="font-mono bg-[#7dd19b]/10 px-2 py-0.5 rounded">
+                      {parsedSource.kind === "arxiv" ? parsedSource.arxivId : "PDF URL"}
+                    </span>
                   </span>
                 ) : touched && value ? (
                   <span className="text-[#f27066]">
-                    Enter a valid arXiv URL or paper ID
+                    Enter a valid arXiv URL/ID or direct PDF URL
                   </span>
                 ) : null}
               </motion.div>

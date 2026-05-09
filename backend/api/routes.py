@@ -33,6 +33,7 @@ from db.connection import get_db
 from db import queries
 from rendering import process_visualization, get_video_path, get_video_url, extract_scene_name
 from jobs import process_paper_job
+from ingestion.pdf_fetcher import derive_pdf_paper_id
 
 router = APIRouter(prefix="/api")
 
@@ -46,21 +47,31 @@ async def start_processing(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Start processing an arXiv paper.
+    Start processing an arXiv paper or a public PDF URL.
 
     Returns immediately with a job_id. Poll /api/status/{job_id} for progress.
     """
+    if bool(request.arxiv_id) == bool(request.pdf_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Provide exactly one of arxiv_id or pdf_url",
+        )
+
     # Create job in database
-    job_id = await queries.create_job(db, request.arxiv_id)
+    job_id = await queries.create_job(db, request.arxiv_id or "pdf")
+
+    # Resolve paper id for response (use derived id for PDFs)
+    paper_id = request.arxiv_id or derive_pdf_paper_id(request.pdf_url or "")
 
     # Start background processing
-    background_tasks.add_task(process_paper_job, job_id, request.arxiv_id)
+    background_tasks.add_task(process_paper_job, job_id, request.arxiv_id, request.pdf_url)
 
     return ProcessResponse(
         job_id=job_id,
-        arxiv_id=request.arxiv_id,
+        arxiv_id=paper_id,
         status=JobStatus.queued,
-        message="Processing started. Poll /api/status/{job_id} for updates."
+        message="Processing started. Poll /api/status/{job_id} for updates.",
+        pdf_url=request.pdf_url,
     )
 
 
@@ -123,8 +134,11 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
 
     Returns 404 if the paper hasn't been processed yet.
     """
-    # Handle version suffix (e.g., "1706.03762v1" -> "1706.03762")
-    base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
+    # Handle version suffix for arXiv IDs (e.g., "1706.03762v1" -> "1706.03762")
+    if arxiv_id.startswith("pdf_"):
+        base_id = arxiv_id
+    else:
+        base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
 
     paper = await queries.get_paper(db, base_id)
 
@@ -139,15 +153,25 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
         for v in paper.visualizations:
             if v.video_url and v.section_id:
                 existing_status = section_status_map.get(v.section_id)
+
+                video_url = v.video_url
+                if video_url.startswith("/api/video/"):
+                    video_id = video_url.rsplit("/", 1)[-1]
+                    if not get_video_path(video_id):
+                        video_url = None
+
+                if not video_url:
+                    continue
+
                 # Only update if:
                 # 1. We don't have a video for this section yet, OR
                 # 2. This video is complete and the existing one is not complete
                 if v.section_id not in section_video_map:
-                    section_video_map[v.section_id] = v.video_url
+                    section_video_map[v.section_id] = video_url
                     section_status_map[v.section_id] = v.status
                 elif v.status == "complete" and existing_status != "complete":
                     # Prefer complete videos over failed/pending/rendering
-                    section_video_map[v.section_id] = v.video_url
+                    section_video_map[v.section_id] = video_url
                     section_status_map[v.section_id] = v.status
 
         return PaperResponse(

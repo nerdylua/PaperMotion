@@ -32,10 +32,15 @@ class VisualizationStatus(str, Enum):
 
 class ProcessRequest(BaseModel):
     """Request body for POST /api/process."""
-    arxiv_id: str = Field(
-        ...,
+    arxiv_id: Optional[str] = Field(
+        None,
         description="arXiv paper ID (e.g., '1706.03762' or '1706.03762v1')",
-        examples=["1706.03762", "2301.07041v2"]
+        examples=["1706.03762", "2301.07041v2"],
+    )
+    pdf_url: Optional[str] = Field(
+        None,
+        description="Direct URL to a publicly accessible PDF",
+        examples=["https://example.com/paper.pdf"],
     )
 
 
@@ -70,6 +75,7 @@ class ProcessResponse(BaseModel):
     arxiv_id: str = Field(..., description="The arXiv paper ID being processed")
     status: JobStatus = Field(..., description="Current job status")
     message: str = Field(..., description="Human-readable status message")
+    pdf_url: Optional[str] = Field(None, description="PDF URL when processing non-arXiv sources")
 
 
 class StepInfo(BaseModel):
