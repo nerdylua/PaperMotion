@@ -18,10 +18,19 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export type JobStatus = "queued" | "processing" | "completed" | "failed";
 export type VisualizationStatus = "pending" | "rendering" | "complete" | "failed";
+export type PaperSourceType = "arxiv" | "pdf_url" | "doi" | "pdf_upload";
+
+export interface ProcessRequest {
+  source_type: PaperSourceType;
+  arxiv_id?: string;
+  pdf_url?: string;
+  doi?: string;
+}
 
 export interface ProcessResponse {
   job_id: string;
-  arxiv_id: string;
+  paper_id: string;
+  source_type: PaperSourceType;
   status: JobStatus;
   message: string;
   pdf_url?: string;
@@ -29,7 +38,7 @@ export interface ProcessResponse {
 
 export interface StatusResponse {
   job_id: string;
-  arxiv_id: string;
+  paper_id: string;
   status: JobStatus;
   progress: number; // 0-100
   current_step?: string;
@@ -96,13 +105,22 @@ function resolveVideoUrl(url: string | undefined | null): string | undefined {
  * Start processing a paper (arXiv ID or direct PDF URL).
  * Returns a job_id that can be polled for status.
  */
+<<<<<<< Updated upstream
 export async function processPaper(source: PaperSource): Promise<ProcessResponse> {
+=======
+export async function processPaper(request: ProcessRequest): Promise<ProcessResponse> {
+>>>>>>> Stashed changes
   if (USE_MOCK) {
-    // Simulate API delay
     await new Promise((r) => setTimeout(r, 500));
+    const paperId = request.arxiv_id || "mock-paper";
     return {
       job_id: "mock-job-" + Date.now(),
+<<<<<<< Updated upstream
       arxiv_id: source.kind === "arxiv" ? source.arxivId : "pdf_mock",
+=======
+      paper_id: paperId,
+      source_type: request.source_type,
+>>>>>>> Stashed changes
       status: "queued",
       message: "Processing started (mock mode)",
       pdf_url: source.kind === "pdf" ? source.pdfUrl : undefined,
@@ -117,7 +135,47 @@ export async function processPaper(source: PaperSource): Promise<ProcessResponse
   const res = await fetch(`${API_BASE}/api/process`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+<<<<<<< Updated upstream
     body: JSON.stringify(body),
+=======
+    body: JSON.stringify(request),
+>>>>>>> Stashed changes
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to start processing: ${res.status} - ${errorText}`);
+  }
+
+  return res.json();
+}
+
+<<<<<<< Updated upstream
+export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
+  return processPaper({ kind: "arxiv", arxivId });
+=======
+export async function processPdfUpload(
+  file: File,
+  title?: string,
+): Promise<ProcessResponse> {
+  if (USE_MOCK) {
+    await new Promise((r) => setTimeout(r, 500));
+    return {
+      job_id: "mock-job-" + Date.now(),
+      paper_id: "pdf_mock",
+      source_type: "pdf_upload",
+      status: "queued",
+      message: "Processing started (mock mode)",
+    };
+  }
+
+  const form = new FormData();
+  form.append("file", file);
+  if (title) form.append("title", title);
+
+  const res = await fetch(`${API_BASE}/api/process/upload`, {
+    method: "POST",
+    body: form,
   });
 
   if (!res.ok) {
@@ -129,7 +187,8 @@ export async function processPaper(source: PaperSource): Promise<ProcessResponse
 }
 
 export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
-  return processPaper({ kind: "arxiv", arxivId });
+  return processPaper({ source_type: "arxiv", arxiv_id: arxivId });
+>>>>>>> Stashed changes
 }
 
 /**
@@ -140,7 +199,7 @@ export async function getProcessingStatus(jobId: string): Promise<StatusResponse
     await new Promise((r) => setTimeout(r, 300));
     return {
       job_id: jobId,
-      arxiv_id: MOCK_STATUS.job_id,
+      paper_id: MOCK_STATUS.job_id,
       status: MOCK_STATUS.status as JobStatus,
       progress: Math.round(MOCK_STATUS.progress * 100),
       current_step: MOCK_STATUS.current_step,

@@ -1,7 +1,12 @@
 "use client";
 
 import Link from "next/link";
+<<<<<<< Updated upstream
 import { useEffect, useState, useCallback, useRef, use, useMemo } from "react";
+=======
+import { useEffect, useState, useCallback, useRef, use } from "react";
+import { useSearchParams } from "next/navigation";
+>>>>>>> Stashed changes
 import { motion, AnimatePresence } from "framer-motion";
 import { CardStack } from "@/components/CardStack";
 import type { ScrollySectionModel } from "@/components/ScrollySection";
@@ -40,9 +45,16 @@ function normalizeArxivId(segments: string[] | undefined): string {
   }
 }
 
+function isArxivId(value: string): boolean {
+  if (!value) return false;
+  return /^(\d{4}\.\d{4,5}(v\d+)?)|([a-z-]+(\.[a-z]{2})?\/\d{7}(v\d+)?)$/i.test(
+    value.trim()
+  );
+}
+
 type PageState =
   | { type: "loading" }
-  | { type: "not_found"; arxivId: string }
+  | { type: "not_found"; paperId: string; canProcess: boolean }
   | { type: "processing"; status: ProcessingStatus }
   | { type: "ready"; paper: Paper }
   | { type: "error"; message: string };
@@ -58,7 +70,9 @@ export default function PaperPage({
 }: {
   params: Promise<{ id?: string[] }>;
 }) {
+  const searchParams = useSearchParams();
   const resolvedParams = use(params);
+<<<<<<< Updated upstream
   const sourceInput = normalizeArxivId(resolvedParams.id);
   const source = useMemo(() => parsePaperSource(sourceInput), [sourceInput]);
 
@@ -73,9 +87,15 @@ export default function PaperPage({
       : source.pdfUrl;
   }, [source]);
   const sourceLabel = source?.kind === "arxiv" ? "View on arXiv" : "View PDF";
+=======
+  const paperId = normalizeArxivId(resolvedParams.id);
+  const jobIdFromUrl = searchParams.get("jobId");
+  const hasArxivId = isArxivId(paperId);
+  const absUrl = hasArxivId ? `https://arxiv.org/abs/${paperId}` : "";
+>>>>>>> Stashed changes
 
   const [state, setState] = useState<PageState>({ type: "loading" });
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(jobIdFromUrl);
   const [scrollProgress, setScrollProgress] = useState(0);
   const demoSimRunning = useRef(false);
 
@@ -92,10 +112,32 @@ export default function PaperPage({
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
+<<<<<<< Updated upstream
   useEffect(() => {
     if (!source) return;
     if (source.kind === "arxiv") {
       setPaperId((current) => (current === source.arxivId ? current : source.arxivId));
+=======
+  const loadPaper = useCallback(async () => {
+    if (!paperId) {
+      setState({ type: "error", message: "No paper ID provided" });
+      return;
+    }
+
+    if (jobIdFromUrl) {
+      setJobId(jobIdFromUrl);
+      setState({
+        type: "processing",
+        status: {
+          job_id: jobIdFromUrl,
+          status: "queued",
+          progress: 0,
+          sections_completed: 0,
+          sections_total: 0,
+          current_step: "Starting...",
+        },
+      });
+>>>>>>> Stashed changes
       return;
     }
 
@@ -118,8 +160,13 @@ export default function PaperPage({
     if (!paperId) return;
 
     // Demo paper: run simulated 5-second processing
+<<<<<<< Updated upstream
     if (source.kind === "arxiv" && DEMO_PAPER_IDS.has(source.arxivId)) {
       const demoData = getDemoPaper(source.arxivId);
+=======
+    if (DEMO_PAPER_IDS.has(paperId)) {
+      const demoData = getDemoPaper(paperId);
+>>>>>>> Stashed changes
       const sectionCount = demoData?.sections.length ?? 5;
       demoSimRunning.current = true;
       setState({
@@ -142,7 +189,11 @@ export default function PaperPage({
         setState({ type: "ready", paper });
         return;
       }
+<<<<<<< Updated upstream
       setState({ type: "not_found", arxivId: paperId });
+=======
+      setState({ type: "not_found", paperId, canProcess: hasArxivId });
+>>>>>>> Stashed changes
     } catch (err) {
       console.error("Error loading paper:", err);
       setState({
@@ -150,6 +201,7 @@ export default function PaperPage({
         message: err instanceof Error ? err.message : "Failed to load paper",
       });
     }
+<<<<<<< Updated upstream
   }, [paperId, source]);
 
   const startProcessing = useCallback(async () => {
@@ -157,6 +209,20 @@ export default function PaperPage({
 
     try {
       const response = await processPaper(source);
+=======
+  }, [paperId, jobIdFromUrl, hasArxivId]);
+
+  const startProcessing = useCallback(async () => {
+    if (!paperId) return;
+
+    if (!hasArxivId) {
+      setState({ type: "error", message: "This paper requires a processing link." });
+      return;
+    }
+
+    try {
+      const response = await processPaper({ source_type: "arxiv", arxiv_id: paperId });
+>>>>>>> Stashed changes
       setJobId(response.job_id);
       if (response.arxiv_id) {
         setPaperId(response.arxiv_id);
@@ -179,7 +245,11 @@ export default function PaperPage({
         message: err instanceof Error ? err.message : "Failed to start processing",
       });
     }
+<<<<<<< Updated upstream
   }, [source]);
+=======
+  }, [paperId, hasArxivId]);
+>>>>>>> Stashed changes
 
   // Demo simulation: animate progress 0→100% over 5 seconds
   useEffect(() => {
@@ -213,7 +283,11 @@ export default function PaperPage({
         });
         setTimeout(async () => {
           demoSimRunning.current = false;
+<<<<<<< Updated upstream
           const paper = await getPaper(source.arxivId);
+=======
+          const paper = await getPaper(paperId);
+>>>>>>> Stashed changes
           if (paper) {
             setState({ type: "ready", paper });
           }
@@ -238,7 +312,11 @@ export default function PaperPage({
       clearInterval(timer);
       demoSimRunning.current = false;
     };
+<<<<<<< Updated upstream
   }, [state.type, source]);
+=======
+  }, [state.type, paperId]);
+>>>>>>> Stashed changes
 
   // Real API polling (non-demo papers)
   useEffect(() => {
@@ -251,8 +329,12 @@ export default function PaperPage({
 
         if (response.status === "completed") {
           clearInterval(pollInterval);
+<<<<<<< Updated upstream
           const targetId = paperId || sourceInput;
           const paper = await getPaper(targetId);
+=======
+          const paper = await getPaper(paperId);
+>>>>>>> Stashed changes
           if (paper) {
             setState({ type: "ready", paper });
           } else {
@@ -273,7 +355,11 @@ export default function PaperPage({
     }, 2000);
 
     return () => clearInterval(pollInterval);
+<<<<<<< Updated upstream
   }, [state.type, jobId, paperId, sourceInput]);
+=======
+  }, [state.type, jobId, paperId]);
+>>>>>>> Stashed changes
 
   // Don't start loading until the background has had its moment
   useEffect(() => {
@@ -286,22 +372,34 @@ export default function PaperPage({
     state.paper.sections.some((s) => !s.video_url) &&
     state.paper.has_pending_visualizations !== false;
   useEffect(() => {
+<<<<<<< Updated upstream
     if (!hasSectionsWithoutVideos) return;
     const targetId = paperId || sourceInput;
     if (!targetId) return;
+=======
+    if (!hasSectionsWithoutVideos || !paperId) return;
+>>>>>>> Stashed changes
     let retries = 0;
     const maxRetries = 12; // ~2 min
     const refetchInterval = setInterval(async () => {
       retries++;
       if (retries > maxRetries) return clearInterval(refetchInterval);
+<<<<<<< Updated upstream
       const paper = await getPaper(targetId);
+=======
+      const paper = await getPaper(paperId);
+>>>>>>> Stashed changes
       if (paper && paper.sections.some((s) => s.video_url)) {
         setState({ type: "ready", paper });
         clearInterval(refetchInterval);
       }
     }, 10000);
     return () => clearInterval(refetchInterval);
+<<<<<<< Updated upstream
   }, [hasSectionsWithoutVideos, paperId, sourceInput]);
+=======
+  }, [hasSectionsWithoutVideos, paperId]);
+>>>>>>> Stashed changes
 
   const onProgressChange = useCallback((progress: number) => {
     setScrollProgress(progress);
@@ -367,7 +465,15 @@ export default function PaperPage({
               {state.type === "loading" && <LoadingState message="Loading paper..." />}
 
               {state.type === "not_found" && (
+<<<<<<< Updated upstream
                 <NotFoundState paperId={state.arxivId} onProcess={startProcessing} />
+=======
+                <NotFoundState
+                  paperId={state.paperId}
+                  canProcess={state.canProcess}
+                  onProcess={startProcessing}
+                />
+>>>>>>> Stashed changes
               )}
 
               {state.type === "processing" && <ProcessingState status={state.status} />}
@@ -379,8 +485,13 @@ export default function PaperPage({
               {state.type === "ready" && (
                 <ReadyState
                   paper={state.paper}
+<<<<<<< Updated upstream
                   sourceUrl={sourceUrl}
                   sourceLabel={sourceLabel}
+=======
+                  absUrl={absUrl}
+                  hasArxivId={hasArxivId}
+>>>>>>> Stashed changes
                   onProgressChange={onProgressChange}
                 />
               )}
@@ -395,6 +506,7 @@ export default function PaperPage({
 // === Scrollytelling Ready State ===
 function ReadyState({
   paper,
+<<<<<<< Updated upstream
   sourceUrl,
   sourceLabel,
   onProgressChange,
@@ -402,6 +514,15 @@ function ReadyState({
   paper: Paper;
   sourceUrl: string;
   sourceLabel: string;
+=======
+  absUrl,
+  hasArxivId,
+  onProgressChange,
+}: {
+  paper: Paper;
+  absUrl: string;
+  hasArxivId: boolean;
+>>>>>>> Stashed changes
   onProgressChange: (progress: number) => void;
 }) {
   const scrollySections: ScrollySectionModel[] = [...paper.sections]
@@ -498,6 +619,7 @@ function ReadyState({
         />
 
         {/* Footer links */}
+<<<<<<< Updated upstream
         <div className="mt-8 mb-16 flex items-center justify-center gap-4 text-sm">
           <a
             href={sourceUrl}
@@ -507,6 +629,39 @@ function ReadyState({
           >
             {sourceLabel}
           </a>
+=======
+        <div className="mt-8 mb-16 flex flex-wrap items-center justify-center gap-4 text-sm">
+          {hasArxivId && absUrl && (
+            <a
+              href={absUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-white/30 hover:text-white/60 transition-colors"
+            >
+              View on arXiv
+            </a>
+          )}
+          {paper.pdf_url && (
+            <a
+              href={paper.pdf_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-white/30 hover:text-white/60 transition-colors"
+            >
+              Open PDF
+            </a>
+          )}
+          {paper.html_url && (
+            <a
+              href={paper.html_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-white/30 hover:text-white/60 transition-colors"
+            >
+              Source Page
+            </a>
+          )}
+>>>>>>> Stashed changes
           <span className="w-1 h-1 rounded-full bg-white/20" />
           <Link href="/" className="text-white/30 hover:text-white/60 transition-colors">
             Explore another paper
@@ -544,9 +699,17 @@ function LoadingState({ message }: { message: string }) {
 
 function NotFoundState({
   paperId,
+<<<<<<< Updated upstream
   onProcess,
 }: {
   paperId: string;
+=======
+  canProcess,
+  onProcess,
+}: {
+  paperId: string;
+  canProcess: boolean;
+>>>>>>> Stashed changes
   onProcess: () => void;
 }) {
   return (
@@ -576,14 +739,20 @@ function NotFoundState({
           </p>
 
           <div className="mt-8 space-y-4">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={onProcess}
-              className="w-full sm:w-auto rounded-2xl bg-white/[0.08] hover:bg-white/[0.12] px-8 py-4 text-sm font-medium text-white border border-white/[0.15] hover:border-white/[0.25] shadow-xl shadow-white/[0.03] transition-all duration-300"
-            >
-              Start Processing
-            </motion.button>
+            {canProcess ? (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={onProcess}
+                className="w-full sm:w-auto rounded-2xl bg-white/[0.08] hover:bg-white/[0.12] px-8 py-4 text-sm font-medium text-white border border-white/[0.15] hover:border-white/[0.25] shadow-xl shadow-white/[0.03] transition-all duration-300"
+              >
+                Start Processing
+              </motion.button>
+            ) : (
+              <div className="rounded-xl bg-white/[0.05] border border-white/[0.10] px-4 py-3 text-xs text-white/50">
+                This link requires a processing job ID. Start from the home page.
+              </div>
+            )}
 
             <p className="text-xs text-white/40">
               This usually takes 3-5 minutes depending on paper length

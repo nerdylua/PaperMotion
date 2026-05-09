@@ -14,6 +14,7 @@ Team 1 owns this module. Output goes to Team 2's AI agents.
 """
 
 import logging
+import re
 from typing import Optional
 
 from models.paper import (
@@ -35,6 +36,7 @@ from .pdf_fetcher import (
     guess_title_from_url,
 )
 from .pdf_parser import parse_pdf
+from .pdf_sources import download_pdf_bytes
 from .html_parser import parse_html, fetch_and_parse_html
 from .section_extractor import extract_sections
 from .section_formatter import format_sections
@@ -134,6 +136,7 @@ async def ingest_paper(
     return paper
 
 
+<<<<<<< Updated upstream
 async def ingest_pdf_url(
     pdf_url: str,
     force_refresh: bool = False,
@@ -169,6 +172,40 @@ async def ingest_pdf_url(
         updated=None,
         categories=[],
         pdf_url=resolved_url,
+=======
+def _extract_abstract(raw_text: str) -> str:
+    """Best-effort abstract extraction from markdown text."""
+    match = re.search(r"(?ims)^#{1,6}\s*abstract\s*$", raw_text)
+    if not match:
+        return ""
+    start = match.end()
+    next_header = re.search(r"(?im)^#{1,6}\s+", raw_text[start:])
+    end = start + next_header.start() if next_header else len(raw_text)
+    abstract = raw_text[start:end].strip()
+    return abstract
+
+
+async def ingest_pdf_bytes(
+    paper_id: str,
+    pdf_bytes: bytes,
+    title: Optional[str] = None,
+    pdf_url: Optional[str] = None,
+) -> StructuredPaper:
+    """Ingest a PDF from raw bytes and return a structured paper."""
+    logger.info("Parsing PDF bytes for paper: %s", paper_id)
+    content = parse_pdf(pdf_bytes)
+    abstract = _extract_abstract(content.raw_text)
+
+    meta = ArxivPaperMeta(
+        arxiv_id=paper_id,
+        title=title or "Uploaded PDF",
+        authors=[],
+        abstract=abstract,
+        published=None,
+        updated=None,
+        categories=[],
+        pdf_url=pdf_url or "",
+>>>>>>> Stashed changes
         html_url=None,
     )
 
@@ -179,11 +216,15 @@ async def ingest_pdf_url(
 
     try:
         sections = await format_sections(sections, meta)
+<<<<<<< Updated upstream
         logger.info(
             "Section formatting succeeded: %d raw -> %d summarized sections",
             raw_count,
             len(sections),
         )
+=======
+        logger.info("Section formatting succeeded: %d raw -> %d sections", raw_count, len(sections))
+>>>>>>> Stashed changes
     except Exception as e:
         logger.error(
             "Section formatting FAILED (%s: %s). Falling back to raw sections.",
@@ -193,11 +234,28 @@ async def ingest_pdf_url(
 
     paper = StructuredPaper(meta=meta, sections=sections)
     await cache_paper(paper)
+<<<<<<< Updated upstream
 
     logger.info("Ingestion complete for PDF: %s", paper_id)
     return paper
 
 
+=======
+    return paper
+
+
+async def ingest_pdf_url(
+    paper_id: str,
+    pdf_url: str,
+    title: Optional[str] = None,
+) -> StructuredPaper:
+    """Download and ingest a PDF by URL."""
+    logger.info("Downloading PDF from URL: %s", pdf_url)
+    pdf_bytes, final_url = await download_pdf_bytes(pdf_url)
+    return await ingest_pdf_bytes(paper_id, pdf_bytes, title=title, pdf_url=final_url)
+
+
+>>>>>>> Stashed changes
 async def _parse_pdf_content(pdf_url: str) -> ParsedContent:
     """Helper to download and parse PDF."""
     logger.info(f"Downloading PDF: {pdf_url}")
@@ -256,6 +314,8 @@ __all__ = [
     "download_pdf_from_url",
     "fetch_html_content",
     "parse_pdf",
+    "ingest_pdf_bytes",
+    "ingest_pdf_url",
     "parse_html",
     "fetch_and_parse_html",
     "extract_sections",

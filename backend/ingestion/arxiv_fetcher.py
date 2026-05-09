@@ -19,6 +19,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 from models.paper import ArxivPaperMeta
+from .pdf_sources import download_pdf_bytes
 
 
 # Regex to normalize arXiv IDs
@@ -305,20 +306,19 @@ async def check_ar5iv_available(arxiv_id: str) -> Optional[str]:
 async def download_pdf(pdf_url: str) -> bytes:
     """
     Download PDF from arXiv.
-    
+
     Args:
         pdf_url: Direct PDF download URL
-        
+
     Returns:
         Raw PDF bytes
-        
+
     Raises:
         httpx.HTTPError: If download fails
+        ValueError: If PDF validation fails
     """
-    async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
-        response = await client.get(pdf_url)
-        response.raise_for_status()
-        return response.content
+    pdf_bytes, _ = await download_pdf_bytes(pdf_url)
+    return pdf_bytes
 
 
 async def fetch_html_content(html_url: str) -> str:

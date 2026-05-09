@@ -28,10 +28,22 @@ class VisualizationStatus(str, Enum):
     failed = "failed"
 
 
+class SourceType(str, Enum):
+    """Paper source types supported by ingestion."""
+    arxiv = "arxiv"
+    pdf_url = "pdf_url"
+    doi = "doi"
+    pdf_upload = "pdf_upload"
+
+
 # === Request Schemas ===
 
 class ProcessRequest(BaseModel):
     """Request body for POST /api/process."""
+    source_type: SourceType = Field(
+        default=SourceType.arxiv,
+        description="Source type: arxiv, pdf_url, or doi",
+    )
     arxiv_id: Optional[str] = Field(
         None,
         description="arXiv paper ID (e.g., '1706.03762' or '1706.03762v1')",
@@ -39,8 +51,13 @@ class ProcessRequest(BaseModel):
     )
     pdf_url: Optional[str] = Field(
         None,
-        description="Direct URL to a publicly accessible PDF",
-        examples=["https://example.com/paper.pdf"],
+        description="Direct PDF URL",
+        examples=["https://example.org/paper.pdf"],
+    )
+    doi: Optional[str] = Field(
+        None,
+        description="DOI identifier or DOI URL",
+        examples=["10.1145/3366423.3380224", "https://doi.org/10.1145/3366423.3380224"],
     )
 
 
@@ -72,7 +89,8 @@ class RenderResponse(BaseModel):
 class ProcessResponse(BaseModel):
     """Response for POST /api/process."""
     job_id: str = Field(..., description="Unique job identifier for polling")
-    arxiv_id: str = Field(..., description="The arXiv paper ID being processed")
+    paper_id: str = Field(..., description="Paper identifier used for retrieval")
+    source_type: SourceType = Field(..., description="Source type for ingestion")
     status: JobStatus = Field(..., description="Current job status")
     message: str = Field(..., description="Human-readable status message")
     pdf_url: Optional[str] = Field(None, description="PDF URL when processing non-arXiv sources")
@@ -88,7 +106,7 @@ class StepInfo(BaseModel):
 class StatusResponse(BaseModel):
     """Response for GET /api/status/{job_id}."""
     job_id: str
-    arxiv_id: str
+    paper_id: str
     status: JobStatus
     progress: float = Field(..., ge=0.0, le=1.0, description="Progress 0.0 to 1.0")
     current_step: Optional[str] = Field(None, description="Current processing step description")

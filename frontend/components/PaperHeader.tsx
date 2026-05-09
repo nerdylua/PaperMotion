@@ -18,9 +18,17 @@ export function PaperHeader({
   abstractMaxLength = 0,
   className = "",
 }: PaperHeaderProps) {
+<<<<<<< Updated upstream
   const isPdfSource = paper.paper_id.startsWith("pdf_");
   const arxivUrl = `https://arxiv.org/abs/${paper.paper_id}`;
   const pdfUrl = paper.pdf_url || `https://arxiv.org/pdf/${paper.paper_id}.pdf`;
+=======
+  const isArxiv = /^(\d{4}\.\d{4,5}(v\d+)?)|([a-z-]+(\.[a-z]{2})?\/\d{7}(v\d+)?)$/i.test(
+    paper.paper_id
+  );
+  const arxivUrl = isArxiv ? `https://arxiv.org/abs/${paper.paper_id}` : "";
+  const pdfUrl = paper.pdf_url || (isArxiv ? `https://arxiv.org/pdf/${paper.paper_id}.pdf` : "");
+>>>>>>> Stashed changes
 
   const displayAbstract =
     abstractMaxLength > 0 && paper.abstract.length > abstractMaxLength
@@ -54,9 +62,15 @@ export function PaperHeader({
       {/* Paper ID and links */}
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="rounded-lg bg-white/[0.04] px-3 py-1.5 font-mono text-white/50 border border-white/[0.06]">
+<<<<<<< Updated upstream
           {isPdfSource ? "PDF" : `arXiv:${paper.paper_id}`}
         </span>
         {!isPdfSource && (
+=======
+          {isArxiv ? "arXiv:" : "Paper ID:"}{paper.paper_id}
+        </span>
+        {arxivUrl && (
+>>>>>>> Stashed changes
           <a
             href={arxivUrl}
             target="_blank"
@@ -66,6 +80,7 @@ export function PaperHeader({
             View on arXiv
           </a>
         )}
+<<<<<<< Updated upstream
         <a
           href={pdfUrl}
           target="_blank"
@@ -75,6 +90,19 @@ export function PaperHeader({
           {isPdfSource ? "View PDF" : "Download PDF"}
         </a>
         {!isPdfSource && paper.html_url && (
+=======
+        {pdfUrl && (
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-white/55 border border-white/[0.06] transition hover:bg-white/[0.07] hover:text-white/80 hover:border-white/[0.12]"
+          >
+            Download PDF
+          </a>
+        )}
+        {paper.html_url && (
+>>>>>>> Stashed changes
           <a
             href={paper.html_url}
             target="_blank"
@@ -124,7 +152,11 @@ export function CompactPaperHeader({
         } ${className}`}
     >
       <div className="text-xs text-white/30 font-mono">
+<<<<<<< Updated upstream
         {paper.paper_id.startsWith("pdf_") ? "PDF" : `arXiv:${paper.paper_id}`}
+=======
+        {paper.paper_id}
+>>>>>>> Stashed changes
       </div>
       <h3 className="mt-1 text-sm font-medium text-white/80 line-clamp-2">
         {paper.title}

@@ -16,7 +16,7 @@ from .models import Paper, Section, Visualization, ProcessingJob
 
 # === Processing Jobs ===
 
-async def create_job(db: AsyncSession, arxiv_id: str) -> str:
+async def create_job(db: AsyncSession, paper_id: str | None = None) -> str:
     """Create a new processing job and return the job_id."""
     job_id = f"job_{uuid.uuid4().hex[:12]}"
     job = ProcessingJob(
@@ -91,7 +91,7 @@ async def get_paper(db: AsyncSession, arxiv_id: str) -> Optional[Paper]:
 
 async def create_paper(
     db: AsyncSession,
-    arxiv_id: str,
+    paper_id: str,
     title: str,
     authors: list[str],
     abstract: str,
@@ -100,7 +100,7 @@ async def create_paper(
 ) -> Paper:
     """Create a new paper."""
     paper = Paper(
-        id=arxiv_id,
+        id=paper_id,
         title=title,
         authors=authors,
         abstract=abstract,
@@ -282,7 +282,7 @@ async def seed_mock_paper(db: AsyncSession):
     # Create paper
     paper = await create_paper(
         db=db,
-        arxiv_id=arxiv_id,
+        paper_id=arxiv_id,
         title="Attention Is All You Need",
         authors=[
             "Ashish Vaswani",
