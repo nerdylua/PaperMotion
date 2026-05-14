@@ -94,6 +94,12 @@ class VoiceoverScriptValidator:
             # Banned animation-command starts (hard fail — bad narration quality)
             if stripped.lower().startswith(self.BANNED_STARTS):
                 issues.append(f"Narration {idx} starts with animation command style wording.")
+            word_count = self._word_count(stripped)
+            if word_count < self.min_words or word_count > self.max_words:
+                issues.append(
+                    f"Narration {idx} is outside {self.min_words}-{self.max_words} words "
+                    f"({word_count} words)."
+                )
 
             alignment_rule_scores.append(self._rule_alignment_score(stripped, reference_terms))
             educational_rule_scores.append(self._rule_educational_score(stripped))

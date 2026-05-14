@@ -2,14 +2,16 @@
 Pipeline Orchestration - Coordinates all agents to generate visualizations.
 
 Main pipeline (quality-first voice mode):
-  SectionAnalyzer -> VisualizationPlanner -> ManimGenerator (voice-aware)
-  -> CodeValidator -> SpatialValidator -> VoiceoverScriptValidator -> RenderTester
+  SectionAnalyzer -> VisualizationPlanner -> optional M2M2PlanningLayer
+  -> ManimGenerator (voice-aware) -> CodeValidator -> SpatialValidator
+  -> VoiceoverScriptValidator -> RenderTester
 
 Legacy fallback mode (disabled by default):
   ... -> RenderTester -> VoiceoverGenerator
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -33,6 +35,7 @@ try:
     from ..models.voiceover import VoiceoverValidationOutput
     from .section_analyzer import SectionAnalyzer
     from .visualization_planner import VisualizationPlanner
+    from .m2m2_layer import M2M2PlanningLayer
     from .manim_generator import ManimGenerator
     from .code_validator import CodeValidator
     from .spatial_validator import SpatialValidator
@@ -54,6 +57,7 @@ except ImportError:
     from models.voiceover import VoiceoverValidationOutput
     from agents.section_analyzer import SectionAnalyzer
     from agents.visualization_planner import VisualizationPlanner
+    from agents.m2m2_layer import M2M2PlanningLayer
     from agents.manim_generator import ManimGenerator
     from agents.code_validator import CodeValidator
     from agents.spatial_validator import SpatialValidator
@@ -77,6 +81,12 @@ ENABLE_SPATIAL_VALIDATION = True
 # The local import test fails on hosts without those system deps (e.g. Render native Python).
 RENDER_MODE = os.getenv("RENDER_MODE", "local")
 ENABLE_RENDER_TESTING = RENDER_MODE != "modal"
+ENABLE_M2M2_LAYER = os.getenv("ENABLE_M2M2_LAYER", "true").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 # Voiceover configuration
 ENABLE_VOICEOVER = True
@@ -130,6 +140,12 @@ async def generate_visualizations(
 
     analyzer = SectionAnalyzer()
     planner = VisualizationPlanner()
+    m2m2_layer = None
+    if ENABLE_M2M2_LAYER:
+        try:
+            m2m2_layer = M2M2PlanningLayer()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("M2M2 layer unavailable; continuing without it: %s", exc)
     generator = ManimGenerator()
     validator = CodeValidator()
     spatial_validator = SpatialValidator() if ENABLE_SPATIAL_VALIDATION else None
@@ -146,7 +162,8 @@ async def generate_visualizations(
     )
 
     logger.info(
-        "  Agents ready: Analyzer, Planner, Generator, Validator%s%s%s%s",
+        "  Agents ready: Analyzer, Planner%s, Generator, Validator%s%s%s%s",
+        ", M2M2PlanningLayer" if m2m2_layer else "",
         ", SpatialValidator" if spatial_validator else "",
         ", VoiceoverScriptValidator" if voiceover_script_validator else "",
         ", RenderTester" if render_tester else "",
@@ -177,6 +194,7 @@ async def generate_visualizations(
                 candidate=candidate,
                 paper=paper,
                 planner=planner,
+                m2m2_layer=m2m2_layer,
                 generator=generator,
                 validator=validator,
                 spatial_validator=spatial_validator,
@@ -200,6 +218,7 @@ async def generate_visualizations(
                 candidate=candidate,
                 paper=paper,
                 planner=planner,
+                m2m2_layer=m2m2_layer,
                 generator=generator,
                 validator=validator,
                 spatial_validator=spatial_validator,
@@ -275,6 +294,7 @@ async def generate_single_visualization(
     planner: VisualizationPlanner,
     generator: ManimGenerator,
     validator: CodeValidator,
+    m2m2_layer: Optional[M2M2PlanningLayer] = None,
     spatial_validator: Optional[SpatialValidator] = None,
     voiceover_script_validator: Optional[VoiceoverScriptValidator] = None,
     render_tester: Optional[RenderTester] = None,
@@ -300,6 +320,31 @@ async def generate_single_visualization(
             paper_context=paper.get_context(),
         )
         logger.info("  Plan ready: %s scenes, %ss target", len(plan.scenes), plan.duration_seconds)
+        scene_spec_json: str | None = None
+        storyboard_json = plan.model_dump_json()
+
+        if m2m2_layer:
+            logger.info("  Enriching plan with M2M2 scene spec...")
+            try:
+                scene_spec = await m2m2_layer.run(
+                    candidate=candidate,
+                    plan=plan,
+                    section_content=section_content,
+                    paper_title=paper.meta.title,
+                    paper_abstract=paper.meta.abstract,
+                    section_equations=section.equations if section else [],
+                )
+                scene_spec_json = scene_spec.model_dump_json(indent=2)
+                storyboard_json = json.dumps(
+                    {
+                        "plan": plan.model_dump(mode="json"),
+                        "m2m2": scene_spec.model_dump(mode="json"),
+                    },
+                    indent=2,
+                )
+                logger.info("  M2M2 scene spec ready: %s beats", len(scene_spec.beats))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("  M2M2 layer failed; continuing with original plan: %s", exc)
 
         code_result: Optional[GeneratedCode] = None
         validation: Optional[ValidatorOutput] = None
@@ -323,6 +368,7 @@ async def generate_single_visualization(
                     voice_name=VOICEOVER_VOICE_NAME,
                     narration_style=VOICEOVER_NARRATION_STYLE,
                     target_duration_seconds=VOICEOVER_TARGET_DURATION_SECONDS,
+                    scene_spec_json=scene_spec_json,
                 )
             else:
                 if validation and validation.issues_found:
@@ -344,6 +390,7 @@ async def generate_single_visualization(
                     voice_name=VOICEOVER_VOICE_NAME,
                     narration_style=VOICEOVER_NARRATION_STYLE,
                     target_duration_seconds=VOICEOVER_TARGET_DURATION_SECONDS,
+                    scene_spec_json=scene_spec_json,
                 )
 
             # Stage 1: code validation
@@ -436,7 +483,7 @@ async def generate_single_visualization(
                         id=viz_id,
                         section_id=candidate.section_id,
                         concept=candidate.concept_name,
-                        storyboard=plan.model_dump_json(),
+                        storyboard=storyboard_json,
                         manim_code=code_result.code,
                         video_url=None,
                         status=VisualizationStatus.PENDING,
@@ -456,7 +503,7 @@ async def generate_single_visualization(
             id=viz_id,
             section_id=candidate.section_id,
             concept=candidate.concept_name,
-            storyboard=plan.model_dump_json(),
+            storyboard=storyboard_json,
             manim_code=final_code,
             video_url=None,
             status=VisualizationStatus.PENDING,

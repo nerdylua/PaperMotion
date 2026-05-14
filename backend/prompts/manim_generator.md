@@ -4,6 +4,7 @@ Your output must be production quality: clear concept flow, stable layout, and f
 
 ## Visualization Plan
 {plan_json}
+{scene_spec_section}
 
 ## Few-shot Example (match style and structure)
 ```python

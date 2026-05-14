@@ -174,14 +174,24 @@ class ManimGenerator(BaseAgent):
         voice_name: str,
         narration_style: str,
         target_duration_seconds: tuple[int, int],
+        scene_spec_json: str | None = None,
     ) -> str:
         """Build generation prompt with mode-specific requirements."""
         example_code = self._get_example_for_type(plan.visualization_type, voiceover_enabled)
         scene_class_name = self._generate_scene_class_name(plan.concept_name)
         tts_setup_snippet = self._get_tts_setup_snippet(tts_service, voice_name)
+        scene_spec_section = ""
+        if scene_spec_json:
+            scene_spec_section = (
+                "\n## M2M2 Paper-Aware Scene Spec\n"
+                "Treat the scene spec as the implementation contract; preserve paper "
+                "grounding, math assumptions, visual metaphor, and beat intent.\n\n"
+                f"{scene_spec_json}\n"
+            )
 
         return self._format_prompt(
             plan_json=plan.model_dump_json(indent=2),
+            scene_spec_section=scene_spec_section,
             example_code=example_code,
             duration_seconds=plan.duration_seconds,
             target_min_duration=target_duration_seconds[0],
@@ -258,6 +268,7 @@ class ManimGenerator(BaseAgent):
         voice_name: str = "",
         narration_style: str = "concept_teacher",
         target_duration_seconds: tuple[int, int] = (30, 45),
+        scene_spec_json: str | None = None,
     ) -> GeneratedCode:
         """Generate Manim code from a plan, optionally with built-in voiceovers.
 
@@ -274,6 +285,7 @@ class ManimGenerator(BaseAgent):
             voice_name=voice_name,
             narration_style=narration_style,
             target_duration_seconds=target_duration_seconds,
+            scene_spec_json=scene_spec_json,
         )
 
         text = await self._call_llm(prompt, system_prompt=enriched_system_prompt)
@@ -303,6 +315,7 @@ class ManimGenerator(BaseAgent):
         voice_name: str = "",
         narration_style: str = "concept_teacher",
         target_duration_seconds: tuple[int, int] = (30, 45),
+        scene_spec_json: str | None = None,
     ) -> GeneratedCode:
         """Regenerate code with feedback from previous failures.
 
@@ -318,6 +331,7 @@ class ManimGenerator(BaseAgent):
             voice_name=voice_name,
             narration_style=narration_style,
             target_duration_seconds=target_duration_seconds,
+            scene_spec_json=scene_spec_json,
         )
 
         error_feedback = f"""
@@ -365,6 +379,7 @@ The previous code had issues. Fix them and regenerate complete code.
         voice_name: str = "",
         narration_style: str = "concept_teacher",
         target_duration_seconds: tuple[int, int] = (30, 45),
+        scene_spec_json: str | None = None,
     ) -> GeneratedCode:
         """Synchronous version for testing."""
         prompt = self._build_prompt(
@@ -374,6 +389,7 @@ The previous code had issues. Fix them and regenerate complete code.
             voice_name=voice_name,
             narration_style=narration_style,
             target_duration_seconds=target_duration_seconds,
+            scene_spec_json=scene_spec_json,
         )
 
         text = self._call_llm_sync(prompt)

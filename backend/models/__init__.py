@@ -19,6 +19,12 @@ from .generation import (
     Visualization,
 )
 from .voiceover import VoiceoverValidationOutput
+from .m2m2_artifacts import (
+    PaperConceptIntent,
+    PaperMathPacket,
+    PaperSceneSpec,
+    SceneBeat,
+)
 
 __all__ = [
     "ArxivPaperMeta",
@@ -36,4 +42,8 @@ __all__ = [
     "ValidatorOutput",
     "Visualization",
     "VoiceoverValidationOutput",
+    "PaperConceptIntent",
+    "PaperMathPacket",
+    "PaperSceneSpec",
+    "SceneBeat",
 ]

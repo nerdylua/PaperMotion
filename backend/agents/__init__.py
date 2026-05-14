@@ -38,6 +38,7 @@ try:
     )
     from .section_analyzer import SectionAnalyzer
     from .visualization_planner import VisualizationPlanner
+    from .m2m2_layer import M2M2PlanningLayer
     from .manim_generator import ManimGenerator
     from .code_validator import CodeValidator
     from .voiceover_script_validator import VoiceoverScriptValidator
@@ -54,6 +55,7 @@ except ImportError:
     )
     from section_analyzer import SectionAnalyzer
     from visualization_planner import VisualizationPlanner
+    from m2m2_layer import M2M2PlanningLayer
     from manim_generator import ManimGenerator
     from code_validator import CodeValidator
     from voiceover_script_validator import VoiceoverScriptValidator
@@ -72,6 +74,7 @@ __all__ = [
     # Pipeline agents
     "SectionAnalyzer",
     "VisualizationPlanner",
+    "M2M2PlanningLayer",
     "ManimGenerator",
     "CodeValidator",
     "VoiceoverScriptValidator",
