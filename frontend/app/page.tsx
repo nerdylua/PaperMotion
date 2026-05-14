@@ -7,6 +7,7 @@ import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-van
 import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import { GlassCard } from "@/components/ui/glass-card";
+import { processPaper, processPdfUpload } from "@/lib/api";
 
 function extractArxivId(inputRaw: string): string | null {
   const input = inputRaw.trim();
@@ -27,27 +28,104 @@ function extractArxivId(inputRaw: string): string | null {
   return null;
 }
 
-const placeholders = [
-  "Paste an arXiv URL or ID...",
-  "1706.03762 (Attention Is All You Need)",
-  "https://arxiv.org/abs/2005.14165",
-  "2303.08774 (GPT-4 Technical Report)",
-  "1810.04805 (BERT)",
-];
+function extractDoi(inputRaw: string): string | null {
+  const input = inputRaw.trim();
+  if (!input) return null;
+  const cleaned = input
+    .replace(/^doi:\s*/i, "")
+    .replace(/^https?:\/\/doi\.org\//i, "")
+    .replace(/^https?:\/\/dx\.doi\.org\//i, "");
+  const match = cleaned.match(/(10\.\d{4,9}\/[-._;()/:A-Z0-9]+)/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+function extractPdfUrl(inputRaw: string): string | null {
+  const input = inputRaw.trim();
+  if (!input) return null;
+  try {
+    const url = new URL(input);
+    const lower = url.pathname.toLowerCase();
+    if (lower.endsWith(".pdf") || lower.includes(".pdf")) {
+      return url.toString();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+type InputMode = "arxiv" | "doi" | "pdf_url" | "pdf_upload";
+
+const placeholdersByMode: Record<InputMode, string[]> = {
+  arxiv: [
+    "Paste an arXiv URL or ID...",
+    "1706.03762 (Attention Is All You Need)",
+    "https://arxiv.org/abs/2005.14165",
+    "2303.08774 (GPT-4 Technical Report)",
+    "1810.04805 (BERT)",
+  ],
+  doi: [
+    "Paste a DOI or DOI URL...",
+    "10.1145/3366423.3380224",
+    "https://doi.org/10.1145/3366423.3380224",
+  ],
+  pdf_url: [
+    "Paste a direct PDF URL...",
+    "https://example.org/paper.pdf",
+  ],
+  pdf_upload: ["Upload a PDF file"],
+};
 
 export default function Home() {
   const router = useRouter();
+  const [mode, setMode] = useState<InputMode>("arxiv");
   const [value, setValue] = useState("");
+  const [file, setFile] = useState<File | null>(null);
   const [touched, setTouched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const parsedId = useMemo(() => extractArxivId(value), [value]);
-  const canSubmit = Boolean(parsedId);
+  const parsedValue = useMemo(() => {
+    if (mode === "arxiv") return extractArxivId(value);
+    if (mode === "doi") return extractDoi(value);
+    if (mode === "pdf_url") return extractPdfUrl(value);
+    return null;
+  }, [mode, value]);
 
-  function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  const canSubmit = mode === "pdf_upload" ? Boolean(file) : Boolean(parsedValue);
+
+  async function onSubmit(e?: React.SyntheticEvent) {
+    e?.preventDefault();
     setTouched(true);
-    if (!parsedId) return;
-    router.push(`/abs/${encodeURIComponent(parsedId)}`);
+    setError(null);
+    if (!canSubmit) return;
+
+    setIsSubmitting(true);
+    try {
+      let response;
+      if (mode === "pdf_upload" && file) {
+        response = await processPdfUpload(file, file.name);
+      } else if (mode === "arxiv" && parsedValue) {
+        response = await processPaper({ source_type: "arxiv", arxiv_id: parsedValue });
+      } else if (mode === "doi" && parsedValue) {
+        response = await processPaper({ source_type: "doi", doi: parsedValue });
+      } else if (mode === "pdf_url" && parsedValue) {
+        response = await processPaper({ source_type: "pdf_url", pdf_url: parsedValue });
+      }
+
+      if (!response) {
+        setError("Could not start processing. Please try again.");
+        return;
+      }
+
+      const target = `/abs/${encodeURIComponent(response.paper_id)}?jobId=${encodeURIComponent(response.job_id)}`;
+      router.push(target);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to start processing";
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -73,7 +151,7 @@ export default function Home() {
               transition={{ duration: 0.6, delay: 0.5 }}
               className="text-lg sm:text-xl text-white/40 max-w-2xl mx-auto leading-relaxed font-light"
             >
-              Paste any arXiv paper. Watch as it turns complex papers
+              Paste any arXiv, DOI, or PDF. Watch as it turns complex papers
               into digestible and <span className="text-white/60 font-medium">visually</span> appealing video explanations.
             </motion.p>
 
@@ -85,6 +163,35 @@ export default function Home() {
               className="mt-10 max-w-xl mx-auto"
             >
               <div className="relative">
+                {/* Input mode toggle */}
+                <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+                  {([
+                    { id: "arxiv", label: "arXiv" },
+                    { id: "doi", label: "DOI" },
+                    { id: "pdf_url", label: "PDF URL" },
+                    { id: "pdf_upload", label: "Upload PDF" },
+                  ] as const).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        setMode(option.id);
+                        setValue("");
+                        setFile(null);
+                        setTouched(false);
+                        setError(null);
+                      }}
+                      className={
+                        option.id === mode
+                          ? "rounded-full bg-white/[0.14] px-4 py-1.5 text-xs uppercase tracking-widest text-white/80 border border-white/[0.25]"
+                          : "rounded-full bg-white/[0.05] px-4 py-1.5 text-xs uppercase tracking-widest text-white/40 border border-white/[0.10] hover:text-white/60 hover:border-white/[0.18]"
+                      }
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Decorative brackets */}
                 <div className="absolute -left-4 top-1/2 -translate-y-1/2 text-3xl text-white/10 font-light select-none hidden sm:block">
                   [
@@ -93,16 +200,45 @@ export default function Home() {
                   ]
                 </div>
 
-                <PlaceholdersAndVanishInput
-                  placeholders={placeholders}
-                  value={value}
-                  onChange={(e) => {
-                    setValue(e.target.value);
-                    setTouched(true);
-                  }}
-                  onSubmit={onSubmit}
-                  disabled={!canSubmit && touched && value.length > 0}
-                />
+                {mode === "pdf_upload" ? (
+                  <div className="space-y-4">
+                    <label className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-white/20 bg-white/[0.03] px-6 py-8 text-white/60 transition hover:border-white/40">
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        className="hidden"
+                        onChange={(event) => {
+                          const next = event.target.files?.[0] || null;
+                          setFile(next);
+                          setTouched(true);
+                        }}
+                      />
+                      <span className="text-sm uppercase tracking-[0.2em]">Select PDF</span>
+                      <span className="text-xs text-white/40">
+                        {file ? file.name : "Only PDF files, up to 25 MB"}
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={onSubmit}
+                      disabled={!canSubmit || isSubmitting}
+                      className="w-full rounded-2xl bg-white/[0.08] px-6 py-3 text-xs uppercase tracking-[0.2em] text-white/70 border border-white/[0.15] transition hover:bg-white/[0.14] hover:text-white/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting ? "Starting..." : "Start Processing"}
+                    </button>
+                  </div>
+                ) : (
+                  <PlaceholdersAndVanishInput
+                    placeholders={placeholdersByMode[mode]}
+                    value={value}
+                    onChange={(e) => {
+                      setValue(e.target.value);
+                      setTouched(true);
+                    }}
+                    onSubmit={onSubmit}
+                    disabled={isSubmitting || (!canSubmit && touched && value.length > 0)}
+                  />
+                )}
               </div>
 
               {/* Status feedback */}
@@ -112,15 +248,27 @@ export default function Home() {
                 transition={{ delay: 1.0 }}
                 className="mt-4 h-6 text-sm"
               >
-                {parsedId ? (
+                {error ? (
+                  <span className="text-[#f27066]">{error}</span>
+                ) : mode === "pdf_upload" ? (
+                  file ? (
+                    <span className="text-[#7dd19b] flex items-center justify-center gap-2">
+                      <span className="text-lg">✓</span>
+                      <span>Selected:</span>
+                      <span className="font-mono bg-[#7dd19b]/10 px-2 py-0.5 rounded">{file.name}</span>
+                    </span>
+                  ) : touched ? (
+                    <span className="text-[#f27066]">Choose a PDF to upload</span>
+                  ) : null
+                ) : parsedValue ? (
                   <span className="text-[#7dd19b] flex items-center justify-center gap-2">
                     <span className="text-lg">✓</span>
                     <span>Detected:{" "}</span>
-                    <span className="font-mono bg-[#7dd19b]/10 px-2 py-0.5 rounded">{parsedId}</span>
+                    <span className="font-mono bg-[#7dd19b]/10 px-2 py-0.5 rounded">{parsedValue}</span>
                   </span>
                 ) : touched && value ? (
                   <span className="text-[#f27066]">
-                    Enter a valid arXiv URL or paper ID
+                    Enter a valid {mode === "doi" ? "DOI" : mode === "pdf_url" ? "PDF URL" : "arXiv URL or ID"}
                   </span>
                 ) : null}
               </motion.div>
@@ -143,7 +291,11 @@ export default function Home() {
                   key={example.id}
                   whileHover={{ scale: 1.05, y: -2 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => setValue(example.id)}
+                  onClick={() => {
+                    setMode("arxiv");
+                    setValue(example.id);
+                    setTouched(true);
+                  }}
                   className="group rounded-xl bg-white/[0.04] px-4 py-2.5 text-sm border border-white/[0.08] transition-all hover:bg-white/[0.07] hover:border-white/[0.14]"
                 >
                   <span className="text-white/40 mr-2">{example.icon}</span>

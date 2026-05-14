@@ -6,7 +6,9 @@ Now using SQLite database and local Manim rendering.
 
 import os
 import uuid
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+import hashlib
+import tempfile
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File, Form
 from fastapi.responses import FileResponse, RedirectResponse
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,11 +30,21 @@ from .schemas import (
     VisualizationStatus,
     RenderRequest,
     RenderResponse,
+    SourceType,
+    TopicGraphRequest,
+    TopicGraphJobResponse,
+    TopicGraphStatusResponse,
+    TopicGraphMode,
 )
 from db.connection import get_db
 from db import queries
 from rendering import process_visualization, get_video_path, get_video_url, extract_scene_name
-from jobs import process_paper_job
+from jobs import (
+    process_paper_job,
+    process_topic_graph_job,
+)
+from ingestion.arxiv_fetcher import normalize_arxiv_id, validate_arxiv_id
+from ingestion.pdf_sources import normalize_doi, make_paper_id, is_probably_pdf_url, validate_pdf_bytes, safe_title_from_filename
 
 router = APIRouter(prefix="/api")
 
@@ -46,21 +58,146 @@ async def start_processing(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Start processing an arXiv paper.
+    Start processing a paper (arXiv, DOI, or PDF URL).
 
     Returns immediately with a job_id. Poll /api/status/{job_id} for progress.
     """
-    # Create job in database
-    job_id = await queries.create_job(db, request.arxiv_id)
+    source_type = request.source_type
 
-    # Start background processing
-    background_tasks.add_task(process_paper_job, job_id, request.arxiv_id)
+    if source_type == SourceType.arxiv:
+        if not request.arxiv_id:
+            raise HTTPException(status_code=400, detail="Missing arXiv ID")
+        if not validate_arxiv_id(request.arxiv_id):
+            raise HTTPException(status_code=400, detail="Invalid arXiv ID format")
+        paper_id = normalize_arxiv_id(request.arxiv_id)
+        source = {"type": "arxiv", "arxiv_id": paper_id, "paper_id": paper_id}
+
+    elif source_type == SourceType.pdf_url:
+        if not request.pdf_url:
+            raise HTTPException(status_code=400, detail="Missing PDF URL")
+        if not is_probably_pdf_url(request.pdf_url):
+            raise HTTPException(status_code=400, detail="PDF URL must point to a .pdf file")
+        paper_id = make_paper_id("pdf", request.pdf_url)
+        source = {"type": "pdf_url", "pdf_url": request.pdf_url, "paper_id": paper_id}
+
+    elif source_type == SourceType.doi:
+        if not request.doi:
+            raise HTTPException(status_code=400, detail="Missing DOI")
+        doi_value = normalize_doi(request.doi)
+        if not doi_value:
+            raise HTTPException(status_code=400, detail="Invalid DOI format")
+        paper_id = make_paper_id("doi", doi_value)
+        source = {"type": "doi", "doi": doi_value, "paper_id": paper_id}
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unsupported source type: {source_type}")
+
+    job_id = await queries.create_job(db, paper_id)
+    background_tasks.add_task(process_paper_job, job_id, source)
 
     return ProcessResponse(
         job_id=job_id,
-        arxiv_id=request.arxiv_id,
+        paper_id=paper_id,
+        source_type=source_type,
         status=JobStatus.queued,
-        message="Processing started. Poll /api/status/{job_id} for updates."
+        message="Processing started. Poll /api/status/{job_id} for updates.",
+    )
+
+
+@router.post("/process/upload", response_model=ProcessResponse)
+async def start_processing_upload(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Start processing an uploaded PDF file."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing PDF filename")
+
+    pdf_bytes = await file.read()
+    try:
+        validate_pdf_bytes(pdf_bytes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    digest = hashlib.sha256(pdf_bytes).hexdigest()[:12]
+    paper_id = f"pdf_{digest}"
+
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
+    temp_file.write(pdf_bytes)
+    temp_file.close()
+
+    source = {
+        "type": "pdf_upload",
+        "paper_id": paper_id,
+        "file_path": temp_file.name,
+        "filename": file.filename,
+        "title": title or safe_title_from_filename(file.filename),
+    }
+
+    job_id = await queries.create_job(db, paper_id)
+    background_tasks.add_task(process_paper_job, job_id, source)
+
+    return ProcessResponse(
+        job_id=job_id,
+        paper_id=paper_id,
+        source_type=SourceType.pdf_upload,
+        status=JobStatus.queued,
+        message="Processing started. Poll /api/status/{job_id} for updates.",
+    )
+
+
+@router.post("/topic/graph", response_model=TopicGraphJobResponse)
+async def start_topic_graph(
+    request: TopicGraphRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Start a topic graph job (arXiv search + embeddings + Manim video).
+    """
+    job_id = await queries.create_topic_graph_job(
+        db,
+        topic=request.topic,
+        mode=request.mode.value,
+        max_results=request.max_results,
+    )
+    background_tasks.add_task(
+        process_topic_graph_job,
+        job_id,
+        request.topic,
+        request.max_results,
+        request.mode.value,
+    )
+
+    return TopicGraphJobResponse(
+        job_id=job_id,
+        status=JobStatus.queued,
+        message="Topic graph processing started. Poll /api/topic/graph/{job_id} for updates.",
+    )
+
+
+@router.get("/topic/graph/{job_id}", response_model=TopicGraphStatusResponse)
+async def get_topic_graph_status(job_id: str, db: AsyncSession = Depends(get_db)):
+    """Get the status and results of a topic graph job."""
+    job = await queries.get_topic_graph_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    mode = TopicGraphMode(job.mode) if job.mode else None
+
+    return TopicGraphStatusResponse(
+        job_id=job.id,
+        status=JobStatus(job.status),
+        progress=job.progress,
+        current_step=job.current_step,
+        error=job.error,
+        topic=job.topic,
+        mode=mode,
+        nodes=job.nodes or [],
+        edges=job.edges or [],
+        video_url=job.video_url,
     )
 
 
@@ -97,7 +234,7 @@ async def get_status(job_id: str, db: AsyncSession = Depends(get_db)):
 
         return StatusResponse(
             job_id=job.id,
-            arxiv_id=job.paper_id or "unknown",
+            paper_id=job.paper_id or "unknown",
             status=JobStatus(job.status),
             progress=progress,
             current_step=job.current_step,
@@ -123,8 +260,11 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
 
     Returns 404 if the paper hasn't been processed yet.
     """
-    # Handle version suffix (e.g., "1706.03762v1" -> "1706.03762")
-    base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
+    # Handle arXiv version suffix only when ID is arXiv-like
+    if validate_arxiv_id(arxiv_id):
+        base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
+    else:
+        base_id = arxiv_id
 
     paper = await queries.get_paper(db, base_id)
 
@@ -139,15 +279,25 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
         for v in paper.visualizations:
             if v.video_url and v.section_id:
                 existing_status = section_status_map.get(v.section_id)
+
+                video_url = v.video_url
+                if video_url.startswith("/api/video/"):
+                    video_id = video_url.rsplit("/", 1)[-1]
+                    if not get_video_path(video_id):
+                        video_url = None
+
+                if not video_url:
+                    continue
+
                 # Only update if:
                 # 1. We don't have a video for this section yet, OR
                 # 2. This video is complete and the existing one is not complete
                 if v.section_id not in section_video_map:
-                    section_video_map[v.section_id] = v.video_url
+                    section_video_map[v.section_id] = video_url
                     section_status_map[v.section_id] = v.status
                 elif v.status == "complete" and existing_status != "complete":
                     # Prefer complete videos over failed/pending/rendering
-                    section_video_map[v.section_id] = v.video_url
+                    section_video_map[v.section_id] = video_url
                     section_status_map[v.section_id] = v.status
 
         return PaperResponse(
@@ -155,7 +305,10 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
             title=paper.title,
             authors=paper.authors or [],
             abstract=paper.abstract or "",
-            pdf_url=paper.pdf_url or f"https://arxiv.org/pdf/{paper.id}",
+            pdf_url=(
+                paper.pdf_url
+                or (f"https://arxiv.org/pdf/{paper.id}" if validate_arxiv_id(paper.id) else "")
+            ),
             html_url=paper.html_url,
             sections=[
                 SectionResponse(

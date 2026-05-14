@@ -7,7 +7,7 @@ import type { Paper } from "@/lib/types";
 type PaperDataState =
   | { status: "idle" }
   | { status: "loading" }
-  | { status: "not_found"; arxivId: string }
+  | { status: "not_found"; paperId: string }
   | { status: "ready"; paper: Paper }
   | { status: "error"; error: string };
 
@@ -38,13 +38,13 @@ type UsePaperDataOptions = {
   /** Callback when an error occurs */
   onError?: (error: string) => void;
   /** Callback when paper is not found (not yet processed) */
-  onNotFound?: (arxivId: string) => void;
+  onNotFound?: (paperId: string) => void;
 };
 
 /**
  * Hook for fetching and managing paper data.
  *
- * @param arxivId - The arXiv ID of the paper to fetch
+ * @param paperId - The paper ID to fetch
  * @param options - Configuration options
  *
  * @example
@@ -54,7 +54,7 @@ type UsePaperDataOptions = {
  * if (isReady) return <PaperView paper={paper} />;
  */
 export function usePaperData(
-  arxivId: string | null | undefined,
+  paperId: string | null | undefined,
   options: UsePaperDataOptions = {}
 ): UsePaperDataReturn {
   const { autoFetch = true, onSuccess, onError, onNotFound } = options;
@@ -62,22 +62,22 @@ export function usePaperData(
   const [state, setState] = useState<PaperDataState>({ status: "idle" });
 
   const fetchPaper = useCallback(async () => {
-    if (!arxivId) {
-      setState({ status: "error", error: "No arXiv ID provided" });
+    if (!paperId) {
+      setState({ status: "error", error: "No paper ID provided" });
       return;
     }
 
     setState({ status: "loading" });
 
     try {
-      const paper = await getPaper(arxivId);
+      const paper = await getPaper(paperId);
 
       if (paper) {
         setState({ status: "ready", paper });
         onSuccess?.(paper);
       } else {
-        setState({ status: "not_found", arxivId });
-        onNotFound?.(arxivId);
+        setState({ status: "not_found", paperId });
+        onNotFound?.(paperId);
       }
     } catch (err) {
       const message =
@@ -85,13 +85,13 @@ export function usePaperData(
       setState({ status: "error", error: message });
       onError?.(message);
     }
-  }, [arxivId, onSuccess, onError, onNotFound]);
+  }, [paperId, onSuccess, onError, onNotFound]);
 
   const startProcessing = useCallback(async (): Promise<ProcessResponse | null> => {
-    if (!arxivId) return null;
+    if (!paperId) return null;
 
     try {
-      const response = await processArxivPaper(arxivId);
+      const response = await processArxivPaper(paperId);
       return response;
     } catch (err) {
       const message =
@@ -100,14 +100,14 @@ export function usePaperData(
       onError?.(message);
       return null;
     }
-  }, [arxivId, onError]);
+  }, [paperId, onError]);
 
   // Auto-fetch on mount if enabled
   useEffect(() => {
-    if (autoFetch && arxivId) {
+    if (autoFetch && paperId) {
       fetchPaper();
     }
-  }, [autoFetch, arxivId, fetchPaper]);
+  }, [autoFetch, paperId, fetchPaper]);
 
   // Derived state
   const paper = state.status === "ready" ? state.paper : null;
@@ -134,8 +134,8 @@ export function usePaperData(
  * @example
  * const { paper, sections, activeSection, scrollToSection } = usePaperWithSections("1706.03762");
  */
-export function usePaperWithSections(arxivId: string | null | undefined) {
-  const paperData = usePaperData(arxivId);
+export function usePaperWithSections(paperId: string | null | undefined) {
+  const paperData = usePaperData(paperId);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
   // Initialize active section when paper loads

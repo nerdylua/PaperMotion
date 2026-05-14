@@ -17,19 +17,30 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export type JobStatus = "queued" | "processing" | "completed" | "failed";
 export type VisualizationStatus = "pending" | "rendering" | "complete" | "failed";
+export type PaperSourceType = "arxiv" | "pdf_url" | "doi" | "pdf_upload";
+export type TopicGraphMode = "explanation" | "comparison";
+
+export interface ProcessRequest {
+  source_type: PaperSourceType;
+  arxiv_id?: string;
+  pdf_url?: string;
+  doi?: string;
+}
 
 export interface ProcessResponse {
   job_id: string;
-  arxiv_id: string;
+  paper_id: string;
+  source_type: PaperSourceType;
   status: JobStatus;
   message: string;
+  pdf_url?: string;
 }
 
 export interface StatusResponse {
   job_id: string;
-  arxiv_id: string;
+  paper_id: string;
   status: JobStatus;
-  progress: number; // 0-100
+  progress: number; // 0.0-1.0
   current_step?: string;
   sections_completed: number;
   sections_total: number;
@@ -74,6 +85,48 @@ export interface HealthResponse {
   services: Record<string, string>;
 }
 
+export interface TopicGraphRequest {
+  topic: string;
+  max_results: number;
+  mode: TopicGraphMode;
+}
+
+export interface TopicGraphNode {
+  id: string;
+  title: string;
+  authors: string[];
+  abstract: string;
+  pdf_url: string;
+  categories: string[];
+  published?: string | null;
+}
+
+export interface TopicGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  label: string;
+}
+
+export interface TopicGraphJobResponse {
+  job_id: string;
+  status: JobStatus;
+  message: string;
+}
+
+export interface TopicGraphStatusResponse {
+  job_id: string;
+  status: JobStatus;
+  progress: number;
+  current_step?: string;
+  error?: string;
+  topic?: string;
+  mode?: TopicGraphMode;
+  nodes: TopicGraphNode[];
+  edges: TopicGraphEdge[];
+  video_url?: string;
+}
+
 // === Helpers ===
 
 /**
@@ -91,25 +144,27 @@ function resolveVideoUrl(url: string | undefined | null): string | undefined {
 // === API Functions ===
 
 /**
- * Start processing an arXiv paper.
+ * Start processing a paper (arXiv ID or direct PDF URL).
  * Returns a job_id that can be polled for status.
  */
-export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
+export async function processPaper(request: ProcessRequest): Promise<ProcessResponse> {
   if (USE_MOCK) {
-    // Simulate API delay
     await new Promise((r) => setTimeout(r, 500));
+    const paperId = request.arxiv_id || "mock-paper";
     return {
       job_id: "mock-job-" + Date.now(),
-      arxiv_id: arxivId,
+      paper_id: paperId,
+      source_type: request.source_type,
       status: "queued",
       message: "Processing started (mock mode)",
+      pdf_url: request.pdf_url,
     };
   }
 
   const res = await fetch(`${API_BASE}/api/process`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ arxiv_id: arxivId }),
+    body: JSON.stringify(request),
   });
 
   if (!res.ok) {
@@ -120,6 +175,42 @@ export async function processArxivPaper(arxivId: string): Promise<ProcessRespons
   return res.json();
 }
 
+export async function processPdfUpload(
+  file: File,
+  title?: string,
+): Promise<ProcessResponse> {
+  if (USE_MOCK) {
+    await new Promise((r) => setTimeout(r, 500));
+    return {
+      job_id: "mock-job-" + Date.now(),
+      paper_id: "pdf_mock",
+      source_type: "pdf_upload",
+      status: "queued",
+      message: "Processing started (mock mode)",
+    };
+  }
+
+  const form = new FormData();
+  form.append("file", file);
+  if (title) form.append("title", title);
+
+  const res = await fetch(`${API_BASE}/api/process/upload`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to start processing: ${res.status} - ${errorText}`);
+  }
+
+  return res.json();
+}
+
+export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
+  return processPaper({ source_type: "arxiv", arxiv_id: arxivId });
+}
+
 /**
  * Poll the processing status of a job.
  */
@@ -128,9 +219,9 @@ export async function getProcessingStatus(jobId: string): Promise<StatusResponse
     await new Promise((r) => setTimeout(r, 300));
     return {
       job_id: jobId,
-      arxiv_id: MOCK_STATUS.job_id,
+      paper_id: MOCK_STATUS.job_id,
       status: MOCK_STATUS.status as JobStatus,
-      progress: Math.round(MOCK_STATUS.progress * 100),
+      progress: MOCK_STATUS.progress,
       current_step: MOCK_STATUS.current_step,
       sections_completed: MOCK_STATUS.sections_completed,
       sections_total: MOCK_STATUS.sections_total,
@@ -149,6 +240,43 @@ export async function getProcessingStatus(jobId: string): Promise<StatusResponse
   }
 
   return res.json();
+}
+
+export async function startTopicGraphJob(
+  request: TopicGraphRequest,
+): Promise<TopicGraphJobResponse> {
+  const res = await fetch(`${API_BASE}/api/topic/graph`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to start topic graph: ${res.status} - ${errorText}`);
+  }
+
+  return res.json();
+}
+
+export async function getTopicGraphStatus(
+  jobId: string,
+): Promise<TopicGraphStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/topic/graph/${encodeURIComponent(jobId)}`);
+
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error(`Topic job not found: ${jobId}`);
+    }
+    const errorText = await res.text();
+    throw new Error(`Failed to get topic graph status: ${res.status} - ${errorText}`);
+  }
+
+  const data: TopicGraphStatusResponse = await res.json();
+  return {
+    ...data,
+    video_url: resolveVideoUrl(data.video_url),
+  };
 }
 
 /**

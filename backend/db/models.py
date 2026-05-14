@@ -89,3 +89,22 @@ class ProcessingJob(Base):
 
     # Relationships
     paper = relationship("Paper", back_populates="jobs")
+
+
+class TopicGraphJob(Base):
+    """Background processing job for topic graph generation."""
+    __tablename__ = "topic_graph_jobs"
+
+    id = Column(String, primary_key=True)
+    topic = Column(String, nullable=False)
+    mode = Column(String, default="explanation")
+    max_results = Column(Integer, default=5)
+    status = Column(String, default="queued")
+    progress = Column(Float, default=0.0)
+    current_step = Column(String, nullable=True)
+    error = Column(Text, nullable=True)
+    nodes = Column(JSON, default=list)
+    edges = Column(JSON, default=list)
+    video_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)

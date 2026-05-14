@@ -7,12 +7,15 @@ Processes papers asynchronously with progress tracking.
 import asyncio
 import logging
 import os
+import pathlib
 from datetime import datetime
 from db.connection import async_session_maker
 from db import queries
 from db.models import Section
 from rendering import process_visualization, get_video_path
 from agents.pipeline import generate_visualizations
+from ingestion.pdf_sources import resolve_doi, safe_title_from_filename, validate_pdf_bytes
+from ingestion.arxiv_fetcher import validate_arxiv_id
 from models.paper import (
     ArxivPaperMeta,
     Equation,
@@ -61,7 +64,7 @@ class ProgressBar:
         logger.info(f"  [{self.name}] {bar} {percent_str} ({self.current}/{self.total}){eta_str}")
 
 
-async def process_paper_job(job_id: str, arxiv_id: str):
+async def process_paper_job(job_id: str, source: dict):
     """
     Main job processing function. Called as a background task.
 
@@ -73,37 +76,51 @@ async def process_paper_job(job_id: str, arxiv_id: str):
     5. Update job status to completed
     """
     logger.info("=" * 60)
+    source_type = (source or {}).get("type", "arxiv")
+    paper_id = (source or {}).get("paper_id") or (source or {}).get("arxiv_id")
+
     logger.info(f"STARTING JOB: {job_id}")
-    logger.info(f"ArXiv ID: {arxiv_id}")
+    logger.info(f"Source type: {source_type}")
+    logger.info(f"Paper ID: {paper_id}")
     logger.info("=" * 60)
 
     async with async_session_maker() as db:
         try:
-            # Step 1: Ingest paper from arXiv
-            logger.info("STEP 1: Ingesting paper from arXiv")
+            if not paper_id:
+                raise ValueError("Missing paper_id for processing")
+            # Step 1: Ingest paper from source
+            logger.info("STEP 1: Ingesting paper")
             logger.info("-" * 60)
 
             await queries.update_job_status(
                 db, job_id,
                 status="processing",
-                current_step="Fetching paper from arXiv",
+                current_step="Fetching paper source",
                 progress=0.10
             )
 
-            paper_exists = await queries.paper_exists(db, arxiv_id)
+            paper_exists = await queries.paper_exists(db, paper_id)
             if paper_exists:
-                logger.info(f"Paper {arxiv_id} already exists in database, skipping ingestion")
+                logger.info("Paper %s already exists in database, skipping ingestion", paper_id)
+                if source_type == "pdf_upload":
+                    upload_path = (source or {}).get("file_path")
+                    if upload_path:
+                        try:
+                            pathlib.Path(upload_path).unlink(missing_ok=True)
+                        except Exception as exc:
+                            logger.warning("Failed to remove temp upload: %s (%s)", upload_path, exc)
             else:
-                logger.info(f"Paper {arxiv_id} not found, fetching from arXiv...")
+                logger.info("Paper %s not found, ingesting from %s", paper_id, source_type)
 
             if not paper_exists:
-                await _ingest_and_store_paper(db, job_id, arxiv_id)
+                structured_paper = await _ingest_from_source(job_id, source)
+                await _store_structured_paper(db, job_id, paper_id, structured_paper)
             else:
                 # Paper already exists, just link the job to it
                 logger.info("Linking job to existing paper...")
                 job = await queries.get_job(db, job_id)
                 if job:
-                    job.paper_id = arxiv_id
+                    job.paper_id = paper_id
                     await db.commit()
                 logger.info("Job linked successfully")
 
@@ -125,7 +142,7 @@ async def process_paper_job(job_id: str, arxiv_id: str):
                 progress=0.50
             )
 
-            db_paper = await queries.get_paper(db, arxiv_id)
+            db_paper = await queries.get_paper(db, paper_id)
             logger.info(f"Found paper in database: {db_paper.title}")
 
             db_sections = sorted(db_paper.sections, key=lambda s: s.order_index)
@@ -143,7 +160,7 @@ async def process_paper_job(job_id: str, arxiv_id: str):
             viz_records = []
 
             # Use paper-based prefix for consistent viz_ids across re-runs
-            paper_suffix = arxiv_id.replace(".", "")[:8]  # e.g., "1706.03762" -> "17060376"
+            paper_suffix = paper_id.replace(".", "")[:8]
 
             for i, visualization in enumerate(generated_visualizations):
                 # Create consistent viz_id based on paper and index, not job
@@ -155,7 +172,7 @@ async def process_paper_job(job_id: str, arxiv_id: str):
                 await queries.upsert_visualization(
                     db,
                     viz_id=viz_id,
-                    paper_id=arxiv_id,
+                    paper_id=paper_id,
                     section_id=visualization.section_id,
                     concept=visualization.concept,
                     storyboard={"raw": visualization.storyboard},
@@ -307,7 +324,7 @@ async def process_paper_job(job_id: str, arxiv_id: str):
                 logger.error(
                     "All visualizations failed for job %s (paper %s)",
                     job_id,
-                    arxiv_id,
+                    paper_id,
                 )
                 return
 
@@ -330,12 +347,12 @@ async def process_paper_job(job_id: str, arxiv_id: str):
 
             logger.info("=" * 60)
             logger.info(f"✓ JOB COMPLETED SUCCESSFULLY: {job_id}")
-            logger.info(f"✓ Paper: {arxiv_id}")
+            logger.info(f"✓ Paper: {paper_id}")
             logger.info(f"✓ Visualizations rendered: {len(viz_records)}")
             logger.info("=" * 60)
 
         except Exception as e:
-            logger.exception(f"✗ JOB FAILED: {job_id} for paper {arxiv_id}")
+            logger.exception(f"✗ JOB FAILED: {job_id} for paper {paper_id}")
             logger.error(f"Error: {str(e)}")
             try:
                 await db.rollback()
@@ -349,19 +366,60 @@ async def process_paper_job(job_id: str, arxiv_id: str):
             raise
 
 
-async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str):
-    """
-    Ingest a real paper from arXiv and store it in the database.
-    """
-    from ingestion import ingest_paper
+async def _ingest_from_source(job_id: str, source: dict) -> StructuredPaper:
+    """Ingest a paper from the specified source type."""
+    from ingestion import ingest_paper, ingest_pdf_bytes, ingest_pdf_url
 
-    await queries.update_job_status(
-        db, job_id,
-        current_step="Fetching paper metadata from arXiv",
-        progress=0.15
-    )
+    source_type = (source or {}).get("type", "arxiv")
+    paper_id = (source or {}).get("paper_id") or (source or {}).get("arxiv_id")
 
-    structured_paper = await ingest_paper(arxiv_id)
+    if source_type == "arxiv":
+        arxiv_id = (source or {}).get("arxiv_id")
+        if not arxiv_id:
+            raise ValueError("Missing arXiv ID for processing")
+        return await ingest_paper(arxiv_id)
+
+    if source_type == "pdf_url":
+        pdf_url = (source or {}).get("pdf_url")
+        if not pdf_url:
+            raise ValueError("Missing PDF URL for processing")
+        title = (source or {}).get("title")
+        return await ingest_pdf_url(paper_id, pdf_url, title=title)
+
+    if source_type == "doi":
+        doi_value = (source or {}).get("doi")
+        if not doi_value:
+            raise ValueError("Missing DOI for processing")
+        await asyncio.sleep(0)  # allow context switch before network calls
+        resolution = await resolve_doi(doi_value)
+        pdf_url = resolution.get("pdf_url")
+        if not pdf_url:
+            raise ValueError("Could not locate a PDF for the provided DOI")
+        title = (source or {}).get("title")
+        return await ingest_pdf_url(paper_id, pdf_url, title=title)
+
+    if source_type == "pdf_upload":
+        upload_path = (source or {}).get("file_path")
+        original_name = (source or {}).get("filename")
+        if not upload_path:
+            raise ValueError("Missing uploaded PDF path for processing")
+        path = pathlib.Path(upload_path)
+        pdf_bytes = path.read_bytes()
+        validate_pdf_bytes(pdf_bytes)
+        title = (source or {}).get("title") or safe_title_from_filename(original_name)
+        try:
+            return await ingest_pdf_bytes(paper_id, pdf_bytes, title=title)
+        finally:
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                logger.warning("Failed to remove temp upload: %s", upload_path)
+
+    raise ValueError(f"Unsupported source type: {source_type}")
+
+
+async def _store_structured_paper(db, job_id: str, paper_id: str, structured_paper: StructuredPaper):
+    """Store a StructuredPaper into the database and link it to the job."""
     meta = structured_paper.meta
 
     await queries.update_job_status(
@@ -370,10 +428,9 @@ async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str):
         progress=0.30
     )
 
-    # Store paper record
     await queries.create_paper(
         db,
-        arxiv_id=meta.arxiv_id,
+        paper_id=paper_id,
         title=meta.title,
         authors=meta.authors,
         abstract=meta.abstract,
@@ -381,17 +438,14 @@ async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str):
         html_url=meta.html_url,
     )
 
-    # Now that the paper exists, link the job to it
     job = await queries.get_job(db, job_id)
     if job:
-        job.paper_id = meta.arxiv_id
+        job.paper_id = paper_id
         await db.commit()
 
-    # Store sections using savepoints so one failure doesn't roll back the paper
     stored_count = 0
     seen_ids = set()
     for i, section in enumerate(structured_paper.sections):
-        # Ensure unique section IDs
         sid = section.id
         if sid in seen_ids:
             sid = f"{sid}-{i}"
@@ -405,7 +459,7 @@ async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str):
 
                 section_obj = Section(
                     id=sid,
-                    paper_id=meta.arxiv_id,
+                    paper_id=paper_id,
                     title=section.title,
                     content=section.content,
                     summary=section.summary or None,
@@ -418,21 +472,24 @@ async def _ingest_and_store_paper(db, job_id: str, arxiv_id: str):
                 db.add(section_obj)
             stored_count += 1
         except Exception as e:
-            logger.warning(f"Failed to store section '{section.title}': {e}")
+            logger.warning("Failed to store section '%s': %s", section.title, e)
 
     await db.commit()
-
-    logger.info(f"Stored paper '{meta.title}' with {stored_count}/{len(structured_paper.sections)} sections")
+    logger.info("Stored paper '%s' with %d/%d sections", meta.title, stored_count, len(structured_paper.sections))
 
 
 def _build_structured_paper_from_db(db_paper, db_sections: list[Section]) -> StructuredPaper:
     """Reconstruct StructuredPaper from database rows for generator pipeline input."""
+    pdf_url = db_paper.pdf_url
+    if not pdf_url and validate_arxiv_id(db_paper.id):
+        pdf_url = f"https://arxiv.org/pdf/{db_paper.id}"
+
     meta = ArxivPaperMeta(
         arxiv_id=db_paper.id,
         title=db_paper.title,
         authors=db_paper.authors or [],
         abstract=db_paper.abstract or "",
-        pdf_url=db_paper.pdf_url or f"https://arxiv.org/pdf/{db_paper.id}",
+        pdf_url=pdf_url or "",
         html_url=db_paper.html_url,
     )
 

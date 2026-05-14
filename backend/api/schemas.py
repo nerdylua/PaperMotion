@@ -28,14 +28,42 @@ class VisualizationStatus(str, Enum):
     failed = "failed"
 
 
+class SourceType(str, Enum):
+    """Paper source types supported by ingestion."""
+    arxiv = "arxiv"
+    pdf_url = "pdf_url"
+    doi = "doi"
+    pdf_upload = "pdf_upload"
+
+
+class TopicGraphMode(str, Enum):
+    """Modes for topic graph narration."""
+    explanation = "explanation"
+    comparison = "comparison"
+
+
 # === Request Schemas ===
 
 class ProcessRequest(BaseModel):
     """Request body for POST /api/process."""
-    arxiv_id: str = Field(
-        ...,
+    source_type: SourceType = Field(
+        default=SourceType.arxiv,
+        description="Source type: arxiv, pdf_url, or doi",
+    )
+    arxiv_id: Optional[str] = Field(
+        None,
         description="arXiv paper ID (e.g., '1706.03762' or '1706.03762v1')",
-        examples=["1706.03762", "2301.07041v2"]
+        examples=["1706.03762", "2301.07041v2"],
+    )
+    pdf_url: Optional[str] = Field(
+        None,
+        description="Direct PDF URL",
+        examples=["https://example.org/paper.pdf"],
+    )
+    doi: Optional[str] = Field(
+        None,
+        description="DOI identifier or DOI URL",
+        examples=["10.1145/3366423.3380224", "https://doi.org/10.1145/3366423.3380224"],
     )
 
 
@@ -62,14 +90,26 @@ class RenderResponse(BaseModel):
     message: str = Field(..., description="Status message")
 
 
+class TopicGraphRequest(BaseModel):
+    """Request body for POST /api/topic/graph."""
+    topic: str = Field(..., description="Topic query (plain text)")
+    max_results: int = Field(5, ge=1, le=5, description="Max papers to include (1-5)")
+    mode: TopicGraphMode = Field(
+        default=TopicGraphMode.explanation,
+        description="Narration mode: explanation or comparison",
+    )
+
+
 # === Response Schemas ===
 
 class ProcessResponse(BaseModel):
     """Response for POST /api/process."""
     job_id: str = Field(..., description="Unique job identifier for polling")
-    arxiv_id: str = Field(..., description="The arXiv paper ID being processed")
+    paper_id: str = Field(..., description="Paper identifier used for retrieval")
+    source_type: SourceType = Field(..., description="Source type for ingestion")
     status: JobStatus = Field(..., description="Current job status")
     message: str = Field(..., description="Human-readable status message")
+    pdf_url: Optional[str] = Field(None, description="PDF URL when processing non-arXiv sources")
 
 
 class StepInfo(BaseModel):
@@ -82,7 +122,7 @@ class StepInfo(BaseModel):
 class StatusResponse(BaseModel):
     """Response for GET /api/status/{job_id}."""
     job_id: str
-    arxiv_id: str
+    paper_id: str
     status: JobStatus
     progress: float = Field(..., ge=0.0, le=1.0, description="Progress 0.0 to 1.0")
     current_step: Optional[str] = Field(None, description="Current processing step description")
@@ -159,3 +199,43 @@ class HealthResponse(BaseModel):
         description="Status of dependent services",
         examples=[{"database": "connected", "redis": "connected", "modal": "configured"}]
     )
+
+
+class TopicGraphNode(BaseModel):
+    """Graph node representing a paper."""
+    id: str
+    title: str
+    authors: list[str]
+    abstract: str
+    pdf_url: str
+    categories: list[str]
+    published: Optional[str] = None
+
+
+class TopicGraphEdge(BaseModel):
+    """Graph edge with similarity weight."""
+    source: str
+    target: str
+    weight: float
+    label: str
+
+
+class TopicGraphJobResponse(BaseModel):
+    """Response for POST /api/topic/graph."""
+    job_id: str
+    status: JobStatus
+    message: str
+
+
+class TopicGraphStatusResponse(BaseModel):
+    """Response for GET /api/topic/graph/{job_id}."""
+    job_id: str
+    status: JobStatus
+    progress: float = Field(..., ge=0.0, le=1.0)
+    current_step: Optional[str] = None
+    error: Optional[str] = None
+    topic: Optional[str] = None
+    mode: Optional[TopicGraphMode] = None
+    nodes: list[TopicGraphNode] = Field(default_factory=list)
+    edges: list[TopicGraphEdge] = Field(default_factory=list)
+    video_url: Optional[str] = None

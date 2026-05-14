@@ -22,8 +22,8 @@ except ImportError:
     pass  # python-dotenv not installed, use system env vars
 
 
-# Default model (configurable via env)
-DEFAULT_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.4")
+
+DEFAULT_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
 
 # Provider is intentionally fixed to OpenAI for production consistency.
 _provider: str = "openai"

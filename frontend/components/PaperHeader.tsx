@@ -18,8 +18,11 @@ export function PaperHeader({
   abstractMaxLength = 0,
   className = "",
 }: PaperHeaderProps) {
-  const arxivUrl = `https://arxiv.org/abs/${paper.paper_id}`;
-  const pdfUrl = paper.pdf_url || `https://arxiv.org/pdf/${paper.paper_id}.pdf`;
+  const isArxiv = /^(\d{4}\.\d{4,5}(v\d+)?)|([a-z-]+(\.[a-z]{2})?\/\d{7}(v\d+)?)$/i.test(
+    paper.paper_id
+  );
+  const arxivUrl = isArxiv ? `https://arxiv.org/abs/${paper.paper_id}` : "";
+  const pdfUrl = paper.pdf_url || (isArxiv ? `https://arxiv.org/pdf/${paper.paper_id}.pdf` : "");
 
   const displayAbstract =
     abstractMaxLength > 0 && paper.abstract.length > abstractMaxLength
@@ -53,24 +56,28 @@ export function PaperHeader({
       {/* Paper ID and links */}
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <span className="rounded-lg bg-white/[0.04] px-3 py-1.5 font-mono text-white/50 border border-white/[0.06]">
-          arXiv:{paper.paper_id}
+          {isArxiv ? "arXiv:" : "Paper ID:"}{paper.paper_id}
         </span>
-        <a
-          href={arxivUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-white/55 border border-white/[0.06] transition hover:bg-white/[0.07] hover:text-white/80 hover:border-white/[0.12]"
-        >
-          View on arXiv
-        </a>
-        <a
-          href={pdfUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-white/55 border border-white/[0.06] transition hover:bg-white/[0.07] hover:text-white/80 hover:border-white/[0.12]"
-        >
-          Download PDF
-        </a>
+        {arxivUrl && (
+          <a
+            href={arxivUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-white/55 border border-white/[0.06] transition hover:bg-white/[0.07] hover:text-white/80 hover:border-white/[0.12]"
+          >
+            View on arXiv
+          </a>
+        )}
+        {pdfUrl && (
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-white/55 border border-white/[0.06] transition hover:bg-white/[0.07] hover:text-white/80 hover:border-white/[0.12]"
+          >
+            Download PDF
+          </a>
+        )}
         {paper.html_url && (
           <a
             href={paper.html_url}
@@ -117,12 +124,11 @@ export function CompactPaperHeader({
   return (
     <Wrapper
       onClick={onClick}
-      className={`w-full text-left rounded-xl bg-white/[0.04] p-4 border border-white/[0.06] transition ${
-        onClick ? "hover:bg-white/[0.07] hover:border-white/[0.12] cursor-pointer" : ""
-      } ${className}`}
+      className={`w-full text-left rounded-xl bg-white/[0.04] p-4 border border-white/[0.06] transition ${onClick ? "hover:bg-white/[0.07] hover:border-white/[0.12] cursor-pointer" : ""
+        } ${className}`}
     >
       <div className="text-xs text-white/30 font-mono">
-        arXiv:{paper.paper_id}
+        {paper.paper_id}
       </div>
       <h3 className="mt-1 text-sm font-medium text-white/80 line-clamp-2">
         {paper.title}
