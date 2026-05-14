@@ -107,8 +107,8 @@ async def process_paper_job(job_id: str, source: dict):
                     if upload_path:
                         try:
                             pathlib.Path(upload_path).unlink(missing_ok=True)
-                        except Exception:
-                            logger.warning("Failed to remove temp upload: %s", upload_path)
+                        except Exception as exc:
+                            logger.warning("Failed to remove temp upload: %s (%s)", upload_path, exc)
             else:
                 logger.info("Paper %s not found, ingesting from %s", paper_id, source_type)
 
