@@ -197,6 +197,8 @@ async def ingest_pdf_url(
     title: Optional[str] = None,
 ) -> StructuredPaper:
     """Download and ingest a PDF by URL."""
+    if not title:
+        title = guess_title_from_url(pdf_url)
     logger.info("Downloading PDF from URL: %s", pdf_url)
     pdf_bytes, final_url = await download_pdf_bytes(pdf_url)
     return await ingest_pdf_bytes(paper_id, pdf_bytes, title=title, pdf_url=final_url)

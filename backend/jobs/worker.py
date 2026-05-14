@@ -102,6 +102,13 @@ async def process_paper_job(job_id: str, source: dict):
             paper_exists = await queries.paper_exists(db, paper_id)
             if paper_exists:
                 logger.info("Paper %s already exists in database, skipping ingestion", paper_id)
+                if source_type == "pdf_upload":
+                    upload_path = (source or {}).get("file_path")
+                    if upload_path:
+                        try:
+                            pathlib.Path(upload_path).unlink(missing_ok=True)
+                        except Exception:
+                            logger.warning("Failed to remove temp upload: %s", upload_path)
             else:
                 logger.info("Paper %s not found, ingesting from %s", paper_id, source_type)
 

@@ -305,7 +305,10 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
             title=paper.title,
             authors=paper.authors or [],
             abstract=paper.abstract or "",
-            pdf_url=paper.pdf_url or f"https://arxiv.org/pdf/{paper.id}",
+            pdf_url=(
+                paper.pdf_url
+                or (f"https://arxiv.org/pdf/{paper.id}" if validate_arxiv_id(paper.id) else "")
+            ),
             html_url=paper.html_url,
             sections=[
                 SectionResponse(
