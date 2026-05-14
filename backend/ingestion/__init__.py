@@ -136,43 +136,6 @@ async def ingest_paper(
     return paper
 
 
-<<<<<<< Updated upstream
-async def ingest_pdf_url(
-    pdf_url: str,
-    force_refresh: bool = False,
-) -> StructuredPaper:
-    """
-    Ingest a paper from a public PDF URL.
-
-    Args:
-        pdf_url: Direct PDF URL
-        force_refresh: If True, bypass cache and re-fetch
-
-    Returns:
-        StructuredPaper with metadata and extracted sections
-    """
-    paper_id = derive_pdf_paper_id(pdf_url)
-    logger.info("Starting ingestion for PDF: %s", paper_id)
-
-    if not force_refresh:
-        cached = await get_cached_paper(paper_id)
-        if cached:
-            logger.info("Returning cached PDF paper: %s", paper_id)
-            return cached
-
-    pdf_bytes, resolved_url = await download_pdf_from_url(pdf_url)
-    content = parse_pdf(pdf_bytes)
-
-    meta = ArxivPaperMeta(
-        arxiv_id=paper_id,
-        title=guess_title_from_url(resolved_url),
-        authors=[],
-        abstract="",
-        published=None,
-        updated=None,
-        categories=[],
-        pdf_url=resolved_url,
-=======
 def _extract_abstract(raw_text: str) -> str:
     """Best-effort abstract extraction from markdown text."""
     match = re.search(r"(?ims)^#{1,6}\s*abstract\s*$", raw_text)
@@ -205,7 +168,6 @@ async def ingest_pdf_bytes(
         updated=None,
         categories=[],
         pdf_url=pdf_url or "",
->>>>>>> Stashed changes
         html_url=None,
     )
 
@@ -216,15 +178,7 @@ async def ingest_pdf_bytes(
 
     try:
         sections = await format_sections(sections, meta)
-<<<<<<< Updated upstream
-        logger.info(
-            "Section formatting succeeded: %d raw -> %d summarized sections",
-            raw_count,
-            len(sections),
-        )
-=======
         logger.info("Section formatting succeeded: %d raw -> %d sections", raw_count, len(sections))
->>>>>>> Stashed changes
     except Exception as e:
         logger.error(
             "Section formatting FAILED (%s: %s). Falling back to raw sections.",
@@ -234,13 +188,6 @@ async def ingest_pdf_bytes(
 
     paper = StructuredPaper(meta=meta, sections=sections)
     await cache_paper(paper)
-<<<<<<< Updated upstream
-
-    logger.info("Ingestion complete for PDF: %s", paper_id)
-    return paper
-
-
-=======
     return paper
 
 
@@ -255,7 +202,6 @@ async def ingest_pdf_url(
     return await ingest_pdf_bytes(paper_id, pdf_bytes, title=title, pdf_url=final_url)
 
 
->>>>>>> Stashed changes
 async def _parse_pdf_content(pdf_url: str) -> ParsedContent:
     """Helper to download and parse PDF."""
     logger.info(f"Downloading PDF: {pdf_url}")

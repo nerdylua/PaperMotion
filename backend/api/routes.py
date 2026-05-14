@@ -31,17 +31,20 @@ from .schemas import (
     RenderRequest,
     RenderResponse,
     SourceType,
+    TopicGraphRequest,
+    TopicGraphJobResponse,
+    TopicGraphStatusResponse,
+    TopicGraphMode,
 )
 from db.connection import get_db
 from db import queries
 from rendering import process_visualization, get_video_path, get_video_url, extract_scene_name
-from jobs import process_paper_job
-<<<<<<< Updated upstream
-from ingestion.pdf_fetcher import derive_pdf_paper_id
-=======
+from jobs import (
+    process_paper_job,
+    process_topic_graph_job,
+)
 from ingestion.arxiv_fetcher import normalize_arxiv_id, validate_arxiv_id
 from ingestion.pdf_sources import normalize_doi, make_paper_id, is_probably_pdf_url, validate_pdf_bytes, safe_title_from_filename
->>>>>>> Stashed changes
 
 router = APIRouter(prefix="/api")
 
@@ -55,33 +58,6 @@ async def start_processing(
     db: AsyncSession = Depends(get_db)
 ):
     """
-<<<<<<< Updated upstream
-    Start processing an arXiv paper or a public PDF URL.
-
-    Returns immediately with a job_id. Poll /api/status/{job_id} for progress.
-    """
-    if bool(request.arxiv_id) == bool(request.pdf_url):
-        raise HTTPException(
-            status_code=400,
-            detail="Provide exactly one of arxiv_id or pdf_url",
-        )
-
-    # Create job in database
-    job_id = await queries.create_job(db, request.arxiv_id or "pdf")
-
-    # Resolve paper id for response (use derived id for PDFs)
-    paper_id = request.arxiv_id or derive_pdf_paper_id(request.pdf_url or "")
-
-    # Start background processing
-    background_tasks.add_task(process_paper_job, job_id, request.arxiv_id, request.pdf_url)
-
-    return ProcessResponse(
-        job_id=job_id,
-        arxiv_id=paper_id,
-        status=JobStatus.queued,
-        message="Processing started. Poll /api/status/{job_id} for updates.",
-        pdf_url=request.pdf_url,
-=======
     Start processing a paper (arXiv, DOI, or PDF URL).
 
     Returns immediately with a job_id. Poll /api/status/{job_id} for progress.
@@ -169,7 +145,59 @@ async def start_processing_upload(
         source_type=SourceType.pdf_upload,
         status=JobStatus.queued,
         message="Processing started. Poll /api/status/{job_id} for updates.",
->>>>>>> Stashed changes
+    )
+
+
+@router.post("/topic/graph", response_model=TopicGraphJobResponse)
+async def start_topic_graph(
+    request: TopicGraphRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Start a topic graph job (arXiv search + embeddings + Manim video).
+    """
+    job_id = await queries.create_topic_graph_job(
+        db,
+        topic=request.topic,
+        mode=request.mode.value,
+        max_results=request.max_results,
+    )
+    background_tasks.add_task(
+        process_topic_graph_job,
+        job_id,
+        request.topic,
+        request.max_results,
+        request.mode.value,
+    )
+
+    return TopicGraphJobResponse(
+        job_id=job_id,
+        status=JobStatus.queued,
+        message="Topic graph processing started. Poll /api/topic/graph/{job_id} for updates.",
+    )
+
+
+@router.get("/topic/graph/{job_id}", response_model=TopicGraphStatusResponse)
+async def get_topic_graph_status(job_id: str, db: AsyncSession = Depends(get_db)):
+    """Get the status and results of a topic graph job."""
+    job = await queries.get_topic_graph_job(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+    mode = TopicGraphMode(job.mode) if job.mode else None
+
+    return TopicGraphStatusResponse(
+        job_id=job.id,
+        status=JobStatus(job.status),
+        progress=job.progress,
+        current_step=job.current_step,
+        error=job.error,
+        topic=job.topic,
+        mode=mode,
+        nodes=job.nodes or [],
+        edges=job.edges or [],
+        video_url=job.video_url,
     )
 
 
@@ -232,19 +260,11 @@ async def get_paper(arxiv_id: str, db: AsyncSession = Depends(get_db)):
 
     Returns 404 if the paper hasn't been processed yet.
     """
-<<<<<<< Updated upstream
-    # Handle version suffix for arXiv IDs (e.g., "1706.03762v1" -> "1706.03762")
-    if arxiv_id.startswith("pdf_"):
-        base_id = arxiv_id
-    else:
-        base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
-=======
     # Handle arXiv version suffix only when ID is arXiv-like
     if validate_arxiv_id(arxiv_id):
         base_id = arxiv_id.split("v")[0] if "v" in arxiv_id else arxiv_id
     else:
         base_id = arxiv_id
->>>>>>> Stashed changes
 
     paper = await queries.get_paper(db, base_id)
 

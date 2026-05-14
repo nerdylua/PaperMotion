@@ -36,6 +36,12 @@ class SourceType(str, Enum):
     pdf_upload = "pdf_upload"
 
 
+class TopicGraphMode(str, Enum):
+    """Modes for topic graph narration."""
+    explanation = "explanation"
+    comparison = "comparison"
+
+
 # === Request Schemas ===
 
 class ProcessRequest(BaseModel):
@@ -82,6 +88,16 @@ class RenderResponse(BaseModel):
     video_url: str = Field(..., description="URL to access the rendered video")
     scene_name: str = Field(..., description="Detected scene class name")
     message: str = Field(..., description="Status message")
+
+
+class TopicGraphRequest(BaseModel):
+    """Request body for POST /api/topic/graph."""
+    topic: str = Field(..., description="Topic query (plain text)")
+    max_results: int = Field(5, ge=1, le=5, description="Max papers to include (1-5)")
+    mode: TopicGraphMode = Field(
+        default=TopicGraphMode.explanation,
+        description="Narration mode: explanation or comparison",
+    )
 
 
 # === Response Schemas ===
@@ -183,3 +199,43 @@ class HealthResponse(BaseModel):
         description="Status of dependent services",
         examples=[{"database": "connected", "redis": "connected", "modal": "configured"}]
     )
+
+
+class TopicGraphNode(BaseModel):
+    """Graph node representing a paper."""
+    id: str
+    title: str
+    authors: list[str]
+    abstract: str
+    pdf_url: str
+    categories: list[str]
+    published: Optional[str] = None
+
+
+class TopicGraphEdge(BaseModel):
+    """Graph edge with similarity weight."""
+    source: str
+    target: str
+    weight: float
+    label: str
+
+
+class TopicGraphJobResponse(BaseModel):
+    """Response for POST /api/topic/graph."""
+    job_id: str
+    status: JobStatus
+    message: str
+
+
+class TopicGraphStatusResponse(BaseModel):
+    """Response for GET /api/topic/graph/{job_id}."""
+    job_id: str
+    status: JobStatus
+    progress: float = Field(..., ge=0.0, le=1.0)
+    current_step: Optional[str] = None
+    error: Optional[str] = None
+    topic: Optional[str] = None
+    mode: Optional[TopicGraphMode] = None
+    nodes: list[TopicGraphNode] = Field(default_factory=list)
+    edges: list[TopicGraphEdge] = Field(default_factory=list)
+    video_url: Optional[str] = None

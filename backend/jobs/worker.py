@@ -24,7 +24,6 @@ from models.paper import (
     StructuredPaper,
     Table,
 )
-from ingestion.pdf_fetcher import derive_pdf_paper_id
 
 logger = logging.getLogger(__name__)
 RENDER_TIMEOUT_SECONDS = int(os.getenv("RENDER_TIMEOUT_SECONDS", "1200"))
@@ -65,11 +64,7 @@ class ProgressBar:
         logger.info(f"  [{self.name}] {bar} {percent_str} ({self.current}/{self.total}){eta_str}")
 
 
-<<<<<<< Updated upstream
-async def process_paper_job(job_id: str, arxiv_id: str | None, pdf_url: str | None):
-=======
 async def process_paper_job(job_id: str, source: dict):
->>>>>>> Stashed changes
     """
     Main job processing function. Called as a background task.
 
@@ -80,31 +75,21 @@ async def process_paper_job(job_id: str, source: dict):
     4. Render all visualizations
     5. Update job status to completed
     """
-    paper_id = arxiv_id or derive_pdf_paper_id(pdf_url or "")
-
     logger.info("=" * 60)
     source_type = (source or {}).get("type", "arxiv")
     paper_id = (source or {}).get("paper_id") or (source or {}).get("arxiv_id")
 
     logger.info(f"STARTING JOB: {job_id}")
-<<<<<<< Updated upstream
-    logger.info(f"ArXiv ID: {arxiv_id}")
-    if pdf_url:
-        logger.info(f"PDF URL: {pdf_url}")
-=======
     logger.info(f"Source type: {source_type}")
     logger.info(f"Paper ID: {paper_id}")
->>>>>>> Stashed changes
     logger.info("=" * 60)
 
     async with async_session_maker() as db:
         try:
+            if not paper_id:
+                raise ValueError("Missing paper_id for processing")
             # Step 1: Ingest paper from source
-<<<<<<< Updated upstream
-            logger.info("STEP 1: Ingesting paper from source")
-=======
             logger.info("STEP 1: Ingesting paper")
->>>>>>> Stashed changes
             logger.info("-" * 60)
 
             await queries.update_job_status(
@@ -113,26 +98,16 @@ async def process_paper_job(job_id: str, source: dict):
                 current_step="Fetching paper source",
                 progress=0.10
             )
-<<<<<<< Updated upstream
-=======
 
->>>>>>> Stashed changes
             paper_exists = await queries.paper_exists(db, paper_id)
             if paper_exists:
                 logger.info("Paper %s already exists in database, skipping ingestion", paper_id)
             else:
-<<<<<<< Updated upstream
-                logger.info("Paper %s not found, ingesting source...", paper_id)
-
-            if not paper_exists:
-                await _ingest_and_store_paper(db, job_id, arxiv_id=arxiv_id, pdf_url=pdf_url)
-=======
                 logger.info("Paper %s not found, ingesting from %s", paper_id, source_type)
 
             if not paper_exists:
                 structured_paper = await _ingest_from_source(job_id, source)
                 await _store_structured_paper(db, job_id, paper_id, structured_paper)
->>>>>>> Stashed changes
             else:
                 # Paper already exists, just link the job to it
                 logger.info("Linking job to existing paper...")
@@ -178,11 +153,7 @@ async def process_paper_job(job_id: str, source: dict):
             viz_records = []
 
             # Use paper-based prefix for consistent viz_ids across re-runs
-<<<<<<< Updated upstream
-            paper_suffix = paper_id.replace(".", "").replace("/", "")[:8]
-=======
             paper_suffix = paper_id.replace(".", "")[:8]
->>>>>>> Stashed changes
 
             for i, visualization in enumerate(generated_visualizations):
                 # Create consistent viz_id based on paper and index, not job
@@ -388,35 +359,6 @@ async def process_paper_job(job_id: str, source: dict):
             raise
 
 
-<<<<<<< Updated upstream
-async def _ingest_and_store_paper(
-    db,
-    job_id: str,
-    arxiv_id: str | None = None,
-    pdf_url: str | None = None,
-):
-    """
-    Ingest a paper from arXiv or a public PDF URL and store it in the database.
-    """
-    from ingestion import ingest_paper, ingest_pdf_url
-
-    if pdf_url:
-        await queries.update_job_status(
-            db, job_id,
-            current_step="Downloading PDF",
-            progress=0.15
-        )
-        structured_paper = await ingest_pdf_url(pdf_url)
-    else:
-        await queries.update_job_status(
-            db, job_id,
-            current_step="Fetching paper metadata from arXiv",
-            progress=0.15
-        )
-        if not arxiv_id:
-            raise ValueError("arxiv_id is required when pdf_url is not provided")
-        structured_paper = await ingest_paper(arxiv_id)
-=======
 async def _ingest_from_source(job_id: str, source: dict) -> StructuredPaper:
     """Ingest a paper from the specified source type."""
     from ingestion import ingest_paper, ingest_pdf_bytes, ingest_pdf_url
@@ -471,7 +413,6 @@ async def _ingest_from_source(job_id: str, source: dict) -> StructuredPaper:
 
 async def _store_structured_paper(db, job_id: str, paper_id: str, structured_paper: StructuredPaper):
     """Store a StructuredPaper into the database and link it to the job."""
->>>>>>> Stashed changes
     meta = structured_paper.meta
 
     await queries.update_job_status(
@@ -527,10 +468,6 @@ async def _store_structured_paper(db, job_id: str, paper_id: str, structured_pap
             logger.warning("Failed to store section '%s': %s", section.title, e)
 
     await db.commit()
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
     logger.info("Stored paper '%s' with %d/%d sections", meta.title, stored_count, len(structured_paper.sections))
 
 

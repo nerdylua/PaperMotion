@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from .models import Paper, Section, Visualization, ProcessingJob
+from .models import Paper, Section, Visualization, ProcessingJob, TopicGraphJob
 
 
 # === Processing Jobs ===
@@ -70,6 +70,86 @@ async def update_job_status(
     if status == "completed":
         job.completed_at = datetime.utcnow()
 
+    await db.commit()
+    return job
+
+
+# === Topic Graph Jobs ===
+
+async def create_topic_graph_job(
+    db: AsyncSession,
+    topic: str,
+    mode: str,
+    max_results: int,
+) -> str:
+    """Create a topic graph job and return its id."""
+    job_id = f"topic_{uuid.uuid4().hex[:12]}"
+    job = TopicGraphJob(
+        id=job_id,
+        topic=topic,
+        mode=mode,
+        max_results=max_results,
+        status="queued",
+        progress=0.0,
+        current_step="Queued for processing",
+        created_at=datetime.utcnow(),
+    )
+    db.add(job)
+    await db.commit()
+    return job_id
+
+
+async def get_topic_graph_job(db: AsyncSession, job_id: str) -> Optional[TopicGraphJob]:
+    """Get a topic graph job by id."""
+    result = await db.execute(
+        select(TopicGraphJob).where(TopicGraphJob.id == job_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def update_topic_graph_job_status(
+    db: AsyncSession,
+    job_id: str,
+    status: Optional[str] = None,
+    progress: Optional[float] = None,
+    current_step: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    """Update a topic graph job status."""
+    job = await get_topic_graph_job(db, job_id)
+    if not job:
+        return None
+
+    if status is not None:
+        job.status = status
+    if progress is not None:
+        job.progress = progress
+    if current_step is not None:
+        job.current_step = current_step
+    if error is not None:
+        job.error = error
+    if status == "completed":
+        job.completed_at = datetime.utcnow()
+
+    await db.commit()
+    return job
+
+
+async def store_topic_graph_result(
+    db: AsyncSession,
+    job_id: str,
+    nodes: list[dict],
+    edges: list[dict],
+    video_url: Optional[str],
+):
+    """Persist topic graph nodes/edges and video url."""
+    job = await get_topic_graph_job(db, job_id)
+    if not job:
+        return None
+
+    job.nodes = nodes
+    job.edges = edges
+    job.video_url = video_url
     await db.commit()
     return job
 

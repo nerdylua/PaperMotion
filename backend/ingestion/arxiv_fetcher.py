@@ -27,14 +27,23 @@ ARXIV_ID_PATTERN = re.compile(r'^(\d{4}\.\d{4,5})(v\d+)?$|^([a-z-]+/\d{7})(v\d+)
 
 # Be conservative with arXiv API pacing to avoid 429s under concurrent jobs.
 ARXIV_MIN_INTERVAL_SECONDS = float(os.getenv("ARXIV_MIN_INTERVAL_SECONDS", "3.0"))
+ARXIV_SEARCH_MIN_INTERVAL_SECONDS = float(
+    os.getenv("ARXIV_SEARCH_MIN_INTERVAL_SECONDS", "8.0")
+)
 ARXIV_META_MAX_RETRIES = int(os.getenv("ARXIV_META_MAX_RETRIES", "6"))
 ARXIV_BACKOFF_BASE_SECONDS = float(os.getenv("ARXIV_BACKOFF_BASE_SECONDS", "3.0"))
+ARXIV_429_COOLDOWN_SECONDS = float(os.getenv("ARXIV_429_COOLDOWN_SECONDS", "60"))
+ARXIV_SEARCH_CACHE_TTL_SECONDS = float(os.getenv("ARXIV_SEARCH_CACHE_TTL_SECONDS", "600"))
 ARXIV_USER_AGENT = os.getenv(
     "ARXIV_USER_AGENT",
     "arXiviz/0.1 (+https://github.com/nihaa/arXivisual)",
 )
 _arxiv_request_lock = asyncio.Lock()
 _last_arxiv_request_ts = 0.0
+_arxiv_cooldown_until = 0.0
+
+# Simple in-memory cache for topic search results to reduce 429s.
+_search_cache: dict[str, tuple[float, list[ArxivPaperMeta]]] = {}
 
 
 def normalize_arxiv_id(arxiv_id: str) -> str:
@@ -80,6 +89,54 @@ def validate_arxiv_id(arxiv_id: str) -> bool:
     return bool(ARXIV_ID_PATTERN.match(cleaned))
 
 
+async def search_arxiv_papers(topic: str, max_results: int = 5) -> list[ArxivPaperMeta]:
+    """
+    Search arXiv by topic and return paper metadata.
+
+    Args:
+        topic: Search query (plain text)
+        max_results: Max number of papers to return (1-5)
+
+    Returns:
+        List of ArxivPaperMeta entries
+    """
+    query = (topic or "").strip()
+    if not query:
+        raise ValueError("Topic query cannot be empty")
+
+    max_results = max(1, min(5, int(max_results)))
+
+    cache_key = f"{query.lower()}|{max_results}"
+    cached = _get_search_cache(cache_key)
+    if cached is not None:
+        logger.info("arXiv search cache hit for '%s'", query)
+        return cached
+
+    await _respect_arxiv_rate_limit(ARXIV_SEARCH_MIN_INTERVAL_SECONDS)
+    entries = await _fetch_search_via_export_api(query=query, max_results=max_results)
+
+    results: list[ArxivPaperMeta] = []
+    for entry in entries:
+        arxiv_id = normalize_arxiv_id(entry["arxiv_id"])
+        pdf_url = f"https://arxiv.org/pdf/{arxiv_id}.pdf"
+        results.append(
+            ArxivPaperMeta(
+                arxiv_id=arxiv_id,
+                title=entry["title"],
+                authors=entry["authors"],
+                abstract=entry["summary"],
+                published=entry["published"],
+                updated=entry["updated"],
+                categories=entry["categories"],
+                pdf_url=pdf_url,
+                html_url=None,
+            )
+        )
+
+    _set_search_cache(cache_key, results)
+    return results
+
+
 async def fetch_paper_meta(arxiv_id: str) -> ArxivPaperMeta:
     """
     Fetch paper metadata from arXiv API.
@@ -109,7 +166,7 @@ async def fetch_paper_meta(arxiv_id: str) -> ArxivPaperMeta:
 
     for attempt in range(1, max_retries + 1):
         try:
-            await _respect_arxiv_rate_limit()
+            await _respect_arxiv_rate_limit(ARXIV_MIN_INTERVAL_SECONDS)
             paper_meta = await _fetch_meta_via_export_api(search_id)
             break
         except Exception as e:
@@ -128,6 +185,12 @@ async def fetch_paper_meta(arxiv_id: str) -> ArxivPaperMeta:
                 or (status_code is not None and 500 <= status_code < 600)
                 or isinstance(e, httpx.RequestError)
             ):
+                if status_code == 429:
+                    global _arxiv_cooldown_until
+                    _arxiv_cooldown_until = max(
+                        _arxiv_cooldown_until,
+                        monotonic() + ARXIV_429_COOLDOWN_SECONDS,
+                    )
                 if attempt == max_retries:
                     break
                 wait = retry_after or _backoff_seconds(attempt)
@@ -197,15 +260,38 @@ def _backoff_seconds(attempt: int) -> float:
     return min(90.0, base + jitter)
 
 
-async def _respect_arxiv_rate_limit() -> None:
+async def _respect_arxiv_rate_limit(min_interval_seconds: float) -> None:
     """Serialize arXiv API requests and keep a minimum spacing between them."""
     global _last_arxiv_request_ts
+    global _arxiv_cooldown_until
     async with _arxiv_request_lock:
         now = monotonic()
-        wait = ARXIV_MIN_INTERVAL_SECONDS - (now - _last_arxiv_request_ts)
+        if now < _arxiv_cooldown_until:
+            await asyncio.sleep(_arxiv_cooldown_until - now)
+            now = monotonic()
+        wait = min_interval_seconds - (now - _last_arxiv_request_ts)
         if wait > 0:
             await asyncio.sleep(wait)
         _last_arxiv_request_ts = monotonic()
+
+
+def _get_search_cache(cache_key: str) -> list[ArxivPaperMeta] | None:
+    if ARXIV_SEARCH_CACHE_TTL_SECONDS <= 0:
+        return None
+    cached = _search_cache.get(cache_key)
+    if not cached:
+        return None
+    cached_at, results = cached
+    if (monotonic() - cached_at) > ARXIV_SEARCH_CACHE_TTL_SECONDS:
+        _search_cache.pop(cache_key, None)
+        return None
+    return results
+
+
+def _set_search_cache(cache_key: str, results: list[ArxivPaperMeta]) -> None:
+    if ARXIV_SEARCH_CACHE_TTL_SECONDS <= 0:
+        return
+    _search_cache[cache_key] = (monotonic(), results)
 
 
 def _parse_atom_datetime(value: str | None) -> datetime | None:
@@ -275,6 +361,129 @@ async def _fetch_meta_via_export_api(arxiv_id: str) -> dict:
         "published": _parse_atom_datetime(entry.findtext("atom:published", default=None, namespaces=atom)),
         "updated": _parse_atom_datetime(entry.findtext("atom:updated", default=None, namespaces=atom)),
     }
+
+
+def _extract_arxiv_id_from_entry(entry: ET.Element) -> str:
+    """Extract arXiv ID from an Atom entry."""
+    atom = {"atom": "http://www.w3.org/2005/Atom"}
+    entry_id = (entry.findtext("atom:id", default="", namespaces=atom) or "").strip()
+    match = re.search(r"arxiv\.org/abs/([^\s?#]+)", entry_id)
+    if match:
+        return match.group(1)
+
+    # Fallback: try alternate link
+    for link in entry.findall("atom:link", atom):
+        href = (link.attrib.get("href") or "").strip()
+        match = re.search(r"arxiv\.org/abs/([^\s?#]+)", href)
+        if match:
+            return match.group(1)
+
+    return entry_id or ""
+
+
+async def _fetch_search_via_export_api(query: str, max_results: int) -> list[dict]:
+    """
+    Fetch multiple papers from export.arxiv.org Atom API by search query.
+
+    Returns:
+        List of dicts with title/summary/authors/categories/published/updated/arxiv_id
+    """
+    url = "https://export.arxiv.org/api/query"
+    params = {
+        "search_query": f"all:{query}",
+        "sortBy": "relevance",
+        "sortOrder": "descending",
+        "start": 0,
+        "max_results": max_results,
+    }
+    headers = {"User-Agent": ARXIV_USER_AGENT}
+    max_retries = max(1, ARXIV_META_MAX_RETRIES)
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            await _respect_arxiv_rate_limit(ARXIV_SEARCH_MIN_INTERVAL_SECONDS)
+            async with httpx.AsyncClient(follow_redirects=True, timeout=20.0, headers=headers) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                xml_text = response.text
+            break
+        except Exception as exc:
+            last_error = exc
+            status_code = None
+            retry_after = None
+            if isinstance(exc, httpx.HTTPStatusError):
+                status_code = exc.response.status_code
+                retry_after = _parse_retry_after_seconds(exc.response.headers.get("Retry-After"))
+
+            if (
+                status_code == 429
+                or (status_code is not None and 500 <= status_code < 600)
+                or isinstance(exc, httpx.RequestError)
+            ):
+                if status_code == 429:
+                    global _arxiv_cooldown_until
+                    _arxiv_cooldown_until = max(
+                        _arxiv_cooldown_until,
+                        monotonic() + ARXIV_429_COOLDOWN_SECONDS,
+                    )
+                if attempt == max_retries:
+                    break
+                wait = retry_after or _backoff_seconds(attempt)
+                logger.warning(
+                    "arXiv search failed (%s). Retrying in %.1fs (attempt %d/%d)",
+                    status_code or type(exc).__name__,
+                    wait,
+                    attempt,
+                    max_retries,
+                )
+                await asyncio.sleep(wait)
+                continue
+
+            raise ValueError(f"Error searching arXiv: {exc}") from exc
+
+    if last_error and "xml_text" not in locals():
+        raise ValueError(f"Error searching arXiv after {max_retries} retries: {last_error}")
+
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ValueError(f"Invalid XML received from arXiv API: {exc}") from exc
+
+    atom = {"atom": "http://www.w3.org/2005/Atom"}
+    entries = root.findall("atom:entry", atom)
+    results: list[dict] = []
+    for entry in entries:
+        title = (entry.findtext("atom:title", default="", namespaces=atom) or "").strip()
+        summary = (entry.findtext("atom:summary", default="", namespaces=atom) or "").strip()
+        authors = [
+            (author.findtext("atom:name", default="", namespaces=atom) or "").strip()
+            for author in entry.findall("atom:author", atom)
+        ]
+        authors = [name for name in authors if name]
+        categories = [
+            (cat.attrib.get("term", "") or "").strip()
+            for cat in entry.findall("atom:category", atom)
+        ]
+        categories = [cat for cat in categories if cat]
+        arxiv_id = _extract_arxiv_id_from_entry(entry)
+
+        if not title or not arxiv_id:
+            continue
+
+        results.append(
+            {
+                "arxiv_id": arxiv_id,
+                "title": title,
+                "summary": summary,
+                "authors": authors,
+                "categories": categories,
+                "published": _parse_atom_datetime(entry.findtext("atom:published", default=None, namespaces=atom)),
+                "updated": _parse_atom_datetime(entry.findtext("atom:updated", default=None, namespaces=atom)),
+            }
+        )
+
+    return results
 
 
 async def check_ar5iv_available(arxiv_id: str) -> Optional[str]:

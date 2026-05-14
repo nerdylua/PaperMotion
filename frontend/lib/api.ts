@@ -6,7 +6,6 @@
 
 import { DEMO_PAPER_IDS, getDemoPaper, MOCK_PAPER, MOCK_STATUS } from "./mock-data";
 import type { Paper, ProcessingStatus, Section } from "./types";
-import type { PaperSource } from "./paper-source";
 
 // Toggle between mock and real API
 const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true";
@@ -19,6 +18,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 export type JobStatus = "queued" | "processing" | "completed" | "failed";
 export type VisualizationStatus = "pending" | "rendering" | "complete" | "failed";
 export type PaperSourceType = "arxiv" | "pdf_url" | "doi" | "pdf_upload";
+export type TopicGraphMode = "explanation" | "comparison";
 
 export interface ProcessRequest {
   source_type: PaperSourceType;
@@ -40,7 +40,7 @@ export interface StatusResponse {
   job_id: string;
   paper_id: string;
   status: JobStatus;
-  progress: number; // 0-100
+  progress: number; // 0.0-1.0
   current_step?: string;
   sections_completed: number;
   sections_total: number;
@@ -85,6 +85,48 @@ export interface HealthResponse {
   services: Record<string, string>;
 }
 
+export interface TopicGraphRequest {
+  topic: string;
+  max_results: number;
+  mode: TopicGraphMode;
+}
+
+export interface TopicGraphNode {
+  id: string;
+  title: string;
+  authors: string[];
+  abstract: string;
+  pdf_url: string;
+  categories: string[];
+  published?: string | null;
+}
+
+export interface TopicGraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+  label: string;
+}
+
+export interface TopicGraphJobResponse {
+  job_id: string;
+  status: JobStatus;
+  message: string;
+}
+
+export interface TopicGraphStatusResponse {
+  job_id: string;
+  status: JobStatus;
+  progress: number;
+  current_step?: string;
+  error?: string;
+  topic?: string;
+  mode?: TopicGraphMode;
+  nodes: TopicGraphNode[];
+  edges: TopicGraphEdge[];
+  video_url?: string;
+}
+
 // === Helpers ===
 
 /**
@@ -105,41 +147,24 @@ function resolveVideoUrl(url: string | undefined | null): string | undefined {
  * Start processing a paper (arXiv ID or direct PDF URL).
  * Returns a job_id that can be polled for status.
  */
-<<<<<<< Updated upstream
-export async function processPaper(source: PaperSource): Promise<ProcessResponse> {
-=======
 export async function processPaper(request: ProcessRequest): Promise<ProcessResponse> {
->>>>>>> Stashed changes
   if (USE_MOCK) {
     await new Promise((r) => setTimeout(r, 500));
     const paperId = request.arxiv_id || "mock-paper";
     return {
       job_id: "mock-job-" + Date.now(),
-<<<<<<< Updated upstream
-      arxiv_id: source.kind === "arxiv" ? source.arxivId : "pdf_mock",
-=======
       paper_id: paperId,
       source_type: request.source_type,
->>>>>>> Stashed changes
       status: "queued",
       message: "Processing started (mock mode)",
-      pdf_url: source.kind === "pdf" ? source.pdfUrl : undefined,
+      pdf_url: request.pdf_url,
     };
   }
-
-  const body =
-    source.kind === "arxiv"
-      ? { arxiv_id: source.arxivId }
-      : { pdf_url: source.pdfUrl };
 
   const res = await fetch(`${API_BASE}/api/process`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-<<<<<<< Updated upstream
-    body: JSON.stringify(body),
-=======
     body: JSON.stringify(request),
->>>>>>> Stashed changes
   });
 
   if (!res.ok) {
@@ -150,10 +175,6 @@ export async function processPaper(request: ProcessRequest): Promise<ProcessResp
   return res.json();
 }
 
-<<<<<<< Updated upstream
-export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
-  return processPaper({ kind: "arxiv", arxivId });
-=======
 export async function processPdfUpload(
   file: File,
   title?: string,
@@ -188,7 +209,6 @@ export async function processPdfUpload(
 
 export async function processArxivPaper(arxivId: string): Promise<ProcessResponse> {
   return processPaper({ source_type: "arxiv", arxiv_id: arxivId });
->>>>>>> Stashed changes
 }
 
 /**
@@ -201,7 +221,7 @@ export async function getProcessingStatus(jobId: string): Promise<StatusResponse
       job_id: jobId,
       paper_id: MOCK_STATUS.job_id,
       status: MOCK_STATUS.status as JobStatus,
-      progress: Math.round(MOCK_STATUS.progress * 100),
+      progress: MOCK_STATUS.progress,
       current_step: MOCK_STATUS.current_step,
       sections_completed: MOCK_STATUS.sections_completed,
       sections_total: MOCK_STATUS.sections_total,
@@ -220,6 +240,43 @@ export async function getProcessingStatus(jobId: string): Promise<StatusResponse
   }
 
   return res.json();
+}
+
+export async function startTopicGraphJob(
+  request: TopicGraphRequest,
+): Promise<TopicGraphJobResponse> {
+  const res = await fetch(`${API_BASE}/api/topic/graph`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to start topic graph: ${res.status} - ${errorText}`);
+  }
+
+  return res.json();
+}
+
+export async function getTopicGraphStatus(
+  jobId: string,
+): Promise<TopicGraphStatusResponse> {
+  const res = await fetch(`${API_BASE}/api/topic/graph/${encodeURIComponent(jobId)}`);
+
+  if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error(`Topic job not found: ${jobId}`);
+    }
+    const errorText = await res.text();
+    throw new Error(`Failed to get topic graph status: ${res.status} - ${errorText}`);
+  }
+
+  const data: TopicGraphStatusResponse = await res.json();
+  return {
+    ...data,
+    video_url: resolveVideoUrl(data.video_url),
+  };
 }
 
 /**

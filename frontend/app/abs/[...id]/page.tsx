@@ -1,12 +1,8 @@
 "use client";
 
 import Link from "next/link";
-<<<<<<< Updated upstream
-import { useEffect, useState, useCallback, useRef, use, useMemo } from "react";
-=======
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import { useSearchParams } from "next/navigation";
->>>>>>> Stashed changes
 import { motion, AnimatePresence } from "framer-motion";
 import { CardStack } from "@/components/CardStack";
 import type { ScrollySectionModel } from "@/components/ScrollySection";
@@ -21,8 +17,6 @@ import {
   getProcessingStatus,
   toProcessingStatus,
 } from "@/lib/api";
-import { parsePaperSource } from "@/lib/paper-source";
-import { derivePdfPaperId } from "@/lib/pdf-id";
 
 // --- Demo simulation config ---
 const DEMO_DURATION_MS = 5000;
@@ -72,27 +66,10 @@ export default function PaperPage({
 }) {
   const searchParams = useSearchParams();
   const resolvedParams = use(params);
-<<<<<<< Updated upstream
-  const sourceInput = normalizeArxivId(resolvedParams.id);
-  const source = useMemo(() => parsePaperSource(sourceInput), [sourceInput]);
-
-  const [paperId, setPaperId] = useState<string | null>(
-    source?.kind === "arxiv" ? source.arxivId : null
-  );
-
-  const sourceUrl = useMemo(() => {
-    if (!source) return "https://arxiv.org";
-    return source.kind === "arxiv"
-      ? `https://arxiv.org/abs/${source.arxivId}`
-      : source.pdfUrl;
-  }, [source]);
-  const sourceLabel = source?.kind === "arxiv" ? "View on arXiv" : "View PDF";
-=======
   const paperId = normalizeArxivId(resolvedParams.id);
   const jobIdFromUrl = searchParams.get("jobId");
   const hasArxivId = isArxivId(paperId);
   const absUrl = hasArxivId ? `https://arxiv.org/abs/${paperId}` : "";
->>>>>>> Stashed changes
 
   const [state, setState] = useState<PageState>({ type: "loading" });
   const [jobId, setJobId] = useState<string | null>(jobIdFromUrl);
@@ -112,12 +89,6 @@ export default function PaperPage({
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
-<<<<<<< Updated upstream
-  useEffect(() => {
-    if (!source) return;
-    if (source.kind === "arxiv") {
-      setPaperId((current) => (current === source.arxivId ? current : source.arxivId));
-=======
   const loadPaper = useCallback(async () => {
     if (!paperId) {
       setState({ type: "error", message: "No paper ID provided" });
@@ -137,36 +108,14 @@ export default function PaperPage({
           current_step: "Starting...",
         },
       });
->>>>>>> Stashed changes
-      return;
-    }
-
-    derivePdfPaperId(source.pdfUrl)
-      .then((id) => setPaperId((current) => (current === id ? current : id)))
-      .catch((err) => {
-        setState({
-          type: "error",
-          message: err instanceof Error ? err.message : "Invalid PDF URL",
-        });
-      });
-  }, [source]);
-
-  const loadPaper = useCallback(async () => {
-    if (!source) {
-      setState({ type: "error", message: "No paper source provided" });
       return;
     }
 
     if (!paperId) return;
 
     // Demo paper: run simulated 5-second processing
-<<<<<<< Updated upstream
-    if (source.kind === "arxiv" && DEMO_PAPER_IDS.has(source.arxivId)) {
-      const demoData = getDemoPaper(source.arxivId);
-=======
     if (DEMO_PAPER_IDS.has(paperId)) {
       const demoData = getDemoPaper(paperId);
->>>>>>> Stashed changes
       const sectionCount = demoData?.sections.length ?? 5;
       demoSimRunning.current = true;
       setState({
@@ -189,11 +138,7 @@ export default function PaperPage({
         setState({ type: "ready", paper });
         return;
       }
-<<<<<<< Updated upstream
-      setState({ type: "not_found", arxivId: paperId });
-=======
       setState({ type: "not_found", paperId, canProcess: hasArxivId });
->>>>>>> Stashed changes
     } catch (err) {
       console.error("Error loading paper:", err);
       setState({
@@ -201,15 +146,6 @@ export default function PaperPage({
         message: err instanceof Error ? err.message : "Failed to load paper",
       });
     }
-<<<<<<< Updated upstream
-  }, [paperId, source]);
-
-  const startProcessing = useCallback(async () => {
-    if (!source) return;
-
-    try {
-      const response = await processPaper(source);
-=======
   }, [paperId, jobIdFromUrl, hasArxivId]);
 
   const startProcessing = useCallback(async () => {
@@ -222,11 +158,7 @@ export default function PaperPage({
 
     try {
       const response = await processPaper({ source_type: "arxiv", arxiv_id: paperId });
->>>>>>> Stashed changes
       setJobId(response.job_id);
-      if (response.arxiv_id) {
-        setPaperId(response.arxiv_id);
-      }
       setState({
         type: "processing",
         status: {
@@ -245,11 +177,7 @@ export default function PaperPage({
         message: err instanceof Error ? err.message : "Failed to start processing",
       });
     }
-<<<<<<< Updated upstream
-  }, [source]);
-=======
   }, [paperId, hasArxivId]);
->>>>>>> Stashed changes
 
   // Demo simulation: animate progress 0→100% over 5 seconds
   useEffect(() => {
@@ -283,11 +211,7 @@ export default function PaperPage({
         });
         setTimeout(async () => {
           demoSimRunning.current = false;
-<<<<<<< Updated upstream
-          const paper = await getPaper(source.arxivId);
-=======
           const paper = await getPaper(paperId);
->>>>>>> Stashed changes
           if (paper) {
             setState({ type: "ready", paper });
           }
@@ -312,11 +236,7 @@ export default function PaperPage({
       clearInterval(timer);
       demoSimRunning.current = false;
     };
-<<<<<<< Updated upstream
-  }, [state.type, source]);
-=======
   }, [state.type, paperId]);
->>>>>>> Stashed changes
 
   // Real API polling (non-demo papers)
   useEffect(() => {
@@ -329,12 +249,7 @@ export default function PaperPage({
 
         if (response.status === "completed") {
           clearInterval(pollInterval);
-<<<<<<< Updated upstream
-          const targetId = paperId || sourceInput;
-          const paper = await getPaper(targetId);
-=======
           const paper = await getPaper(paperId);
->>>>>>> Stashed changes
           if (paper) {
             setState({ type: "ready", paper });
           } else {
@@ -355,11 +270,7 @@ export default function PaperPage({
     }, 2000);
 
     return () => clearInterval(pollInterval);
-<<<<<<< Updated upstream
-  }, [state.type, jobId, paperId, sourceInput]);
-=======
   }, [state.type, jobId, paperId]);
->>>>>>> Stashed changes
 
   // Don't start loading until the background has had its moment
   useEffect(() => {
@@ -372,34 +283,20 @@ export default function PaperPage({
     state.paper.sections.some((s) => !s.video_url) &&
     state.paper.has_pending_visualizations !== false;
   useEffect(() => {
-<<<<<<< Updated upstream
-    if (!hasSectionsWithoutVideos) return;
-    const targetId = paperId || sourceInput;
-    if (!targetId) return;
-=======
     if (!hasSectionsWithoutVideos || !paperId) return;
->>>>>>> Stashed changes
     let retries = 0;
     const maxRetries = 12; // ~2 min
     const refetchInterval = setInterval(async () => {
       retries++;
       if (retries > maxRetries) return clearInterval(refetchInterval);
-<<<<<<< Updated upstream
-      const paper = await getPaper(targetId);
-=======
       const paper = await getPaper(paperId);
->>>>>>> Stashed changes
       if (paper && paper.sections.some((s) => s.video_url)) {
         setState({ type: "ready", paper });
         clearInterval(refetchInterval);
       }
     }, 10000);
     return () => clearInterval(refetchInterval);
-<<<<<<< Updated upstream
-  }, [hasSectionsWithoutVideos, paperId, sourceInput]);
-=======
   }, [hasSectionsWithoutVideos, paperId]);
->>>>>>> Stashed changes
 
   const onProgressChange = useCallback((progress: number) => {
     setScrollProgress(progress);
@@ -465,15 +362,11 @@ export default function PaperPage({
               {state.type === "loading" && <LoadingState message="Loading paper..." />}
 
               {state.type === "not_found" && (
-<<<<<<< Updated upstream
-                <NotFoundState paperId={state.arxivId} onProcess={startProcessing} />
-=======
                 <NotFoundState
                   paperId={state.paperId}
                   canProcess={state.canProcess}
                   onProcess={startProcessing}
                 />
->>>>>>> Stashed changes
               )}
 
               {state.type === "processing" && <ProcessingState status={state.status} />}
@@ -485,13 +378,8 @@ export default function PaperPage({
               {state.type === "ready" && (
                 <ReadyState
                   paper={state.paper}
-<<<<<<< Updated upstream
-                  sourceUrl={sourceUrl}
-                  sourceLabel={sourceLabel}
-=======
                   absUrl={absUrl}
                   hasArxivId={hasArxivId}
->>>>>>> Stashed changes
                   onProgressChange={onProgressChange}
                 />
               )}
@@ -506,15 +394,6 @@ export default function PaperPage({
 // === Scrollytelling Ready State ===
 function ReadyState({
   paper,
-<<<<<<< Updated upstream
-  sourceUrl,
-  sourceLabel,
-  onProgressChange,
-}: {
-  paper: Paper;
-  sourceUrl: string;
-  sourceLabel: string;
-=======
   absUrl,
   hasArxivId,
   onProgressChange,
@@ -522,7 +401,6 @@ function ReadyState({
   paper: Paper;
   absUrl: string;
   hasArxivId: boolean;
->>>>>>> Stashed changes
   onProgressChange: (progress: number) => void;
 }) {
   const scrollySections: ScrollySectionModel[] = [...paper.sections]
@@ -619,17 +497,6 @@ function ReadyState({
         />
 
         {/* Footer links */}
-<<<<<<< Updated upstream
-        <div className="mt-8 mb-16 flex items-center justify-center gap-4 text-sm">
-          <a
-            href={sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-white/30 hover:text-white/60 transition-colors"
-          >
-            {sourceLabel}
-          </a>
-=======
         <div className="mt-8 mb-16 flex flex-wrap items-center justify-center gap-4 text-sm">
           {hasArxivId && absUrl && (
             <a
@@ -661,7 +528,6 @@ function ReadyState({
               Source Page
             </a>
           )}
->>>>>>> Stashed changes
           <span className="w-1 h-1 rounded-full bg-white/20" />
           <Link href="/" className="text-white/30 hover:text-white/60 transition-colors">
             Explore another paper
@@ -699,17 +565,11 @@ function LoadingState({ message }: { message: string }) {
 
 function NotFoundState({
   paperId,
-<<<<<<< Updated upstream
-  onProcess,
-}: {
-  paperId: string;
-=======
   canProcess,
   onProcess,
 }: {
   paperId: string;
   canProcess: boolean;
->>>>>>> Stashed changes
   onProcess: () => void;
 }) {
   return (

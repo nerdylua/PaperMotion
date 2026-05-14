@@ -7,17 +7,6 @@ import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-van
 import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import { GlassCard } from "@/components/ui/glass-card";
-<<<<<<< Updated upstream
-import { parsePaperSource } from "@/lib/paper-source";
-
-const placeholders = [
-  "Paste an arXiv URL or direct PDF link...",
-  "1706.03762 (Attention Is All You Need)",
-  "https://arxiv.org/abs/2005.14165",
-  "2303.08774 (GPT-4 Technical Report)",
-  "https://proceedings.neurips.cc/paper_files/paper/2012/file/c399862d3b9d6b76c8436e924a68c45b-Paper.pdf",
-];
-=======
 import { processPaper, processPdfUpload } from "@/lib/api";
 
 function extractArxivId(inputRaw: string): string | null {
@@ -86,7 +75,6 @@ const placeholdersByMode: Record<InputMode, string[]> = {
   ],
   pdf_upload: ["Upload a PDF file"],
 };
->>>>>>> Stashed changes
 
 export default function Home() {
   const router = useRouter();
@@ -97,31 +85,18 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-<<<<<<< Updated upstream
-  const parsedSource = useMemo(() => parsePaperSource(value), [value]);
-  const canSubmit = Boolean(parsedSource);
-=======
   const parsedValue = useMemo(() => {
     if (mode === "arxiv") return extractArxivId(value);
     if (mode === "doi") return extractDoi(value);
     if (mode === "pdf_url") return extractPdfUrl(value);
     return null;
   }, [mode, value]);
->>>>>>> Stashed changes
 
   const canSubmit = mode === "pdf_upload" ? Boolean(file) : Boolean(parsedValue);
 
   async function onSubmit(e?: React.SyntheticEvent) {
     e?.preventDefault();
     setTouched(true);
-<<<<<<< Updated upstream
-    if (!parsedSource) return;
-    const target =
-      parsedSource.kind === "arxiv"
-        ? parsedSource.arxivId
-        : parsedSource.pdfUrl;
-    router.push(`/abs/${encodeURIComponent(target)}`);
-=======
     setError(null);
     if (!canSubmit) return;
 
@@ -151,7 +126,6 @@ export default function Home() {
     } finally {
       setIsSubmitting(false);
     }
->>>>>>> Stashed changes
   }
 
   return (
@@ -177,11 +151,7 @@ export default function Home() {
               transition={{ duration: 0.6, delay: 0.5 }}
               className="text-lg sm:text-xl text-white/40 max-w-2xl mx-auto leading-relaxed font-light"
             >
-<<<<<<< Updated upstream
-              Paste any arXiv paper or public PDF. Watch as it turns complex papers
-=======
               Paste any arXiv, DOI, or PDF. Watch as it turns complex papers
->>>>>>> Stashed changes
               into digestible and <span className="text-white/60 font-medium">visually</span> appealing video explanations.
             </motion.p>
 
@@ -278,19 +248,6 @@ export default function Home() {
                 transition={{ delay: 1.0 }}
                 className="mt-4 h-6 text-sm"
               >
-<<<<<<< Updated upstream
-                {parsedSource ? (
-                  <span className="text-[#7dd19b] flex items-center justify-center gap-2">
-                    <span className="text-lg">✓</span>
-                    <span>Detected:{" "}</span>
-                    <span className="font-mono bg-[#7dd19b]/10 px-2 py-0.5 rounded">
-                      {parsedSource.kind === "arxiv" ? parsedSource.arxivId : "PDF URL"}
-                    </span>
-                  </span>
-                ) : touched && value ? (
-                  <span className="text-[#f27066]">
-                    Enter a valid arXiv URL/ID or direct PDF URL
-=======
                 {error ? (
                   <span className="text-[#f27066]">{error}</span>
                 ) : mode === "pdf_upload" ? (
@@ -312,7 +269,6 @@ export default function Home() {
                 ) : touched && value ? (
                   <span className="text-[#f27066]">
                     Enter a valid {mode === "doi" ? "DOI" : mode === "pdf_url" ? "PDF URL" : "arXiv URL or ID"}
->>>>>>> Stashed changes
                   </span>
                 ) : null}
               </motion.div>
