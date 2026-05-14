@@ -13,7 +13,7 @@ import re
 import httpx
 from xml.etree import ElementTree as ET
 from time import monotonic
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,10 @@ ARXIV_META_MAX_RETRIES = int(os.getenv("ARXIV_META_MAX_RETRIES", "6"))
 ARXIV_BACKOFF_BASE_SECONDS = float(os.getenv("ARXIV_BACKOFF_BASE_SECONDS", "3.0"))
 ARXIV_429_COOLDOWN_SECONDS = float(os.getenv("ARXIV_429_COOLDOWN_SECONDS", "60"))
 ARXIV_SEARCH_CACHE_TTL_SECONDS = float(os.getenv("ARXIV_SEARCH_CACHE_TTL_SECONDS", "600"))
+ARXIV_TOPIC_RECENT_YEARS = int(os.getenv("ARXIV_TOPIC_RECENT_YEARS", "3"))
+ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER = int(
+    os.getenv("ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER", "4")
+)
 ARXIV_USER_AGENT = os.getenv(
     "ARXIV_USER_AGENT",
     "arXiviz/0.1 (+https://github.com/nihaa/arXivisual)",
@@ -106,14 +110,41 @@ async def search_arxiv_papers(topic: str, max_results: int = 5) -> list[ArxivPap
 
     max_results = max(1, min(5, int(max_results)))
 
-    cache_key = f"{query.lower()}|{max_results}"
+    recent_years = max(1, ARXIV_TOPIC_RECENT_YEARS)
+    cache_key = f"{query.lower()}|{max_results}|recent_years={recent_years}"
     cached = _get_search_cache(cache_key)
     if cached is not None:
         logger.info("arXiv search cache hit for '%s'", query)
         return cached
 
-    await _respect_arxiv_rate_limit(ARXIV_SEARCH_MIN_INTERVAL_SECONDS)
-    entries = await _fetch_search_via_export_api(query=query, max_results=max_results)
+    candidate_limit = max(
+        max_results,
+        min(25, max_results * max(1, ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER)),
+    )
+    start_date, end_date = _recent_submission_window(recent_years)
+    entries = await _fetch_search_via_export_api(
+        query=query,
+        max_results=candidate_limit,
+        submitted_after=start_date,
+        submitted_before=end_date,
+        sort_by="relevance",
+    )
+    entries = _rank_recent_entries(entries)
+
+    if len(entries) < max_results:
+        logger.info(
+            "Only found %d recent arXiv papers for '%s'; broadening search",
+            len(entries),
+            query,
+        )
+        fallback_entries = await _fetch_search_via_export_api(
+            query=query,
+            max_results=max_results,
+            sort_by="relevance",
+        )
+        entries = _dedupe_entries(entries + fallback_entries)
+
+    entries = entries[:max_results]
 
     results: list[ArxivPaperMeta] = []
     for entry in entries:
@@ -294,6 +325,62 @@ def _set_search_cache(cache_key: str, results: list[ArxivPaperMeta]) -> None:
     _search_cache[cache_key] = (monotonic(), results)
 
 
+def _recent_submission_window(years: int) -> tuple[datetime, datetime]:
+    """Return the UTC submission date window for recent topic searches."""
+    now = datetime.now(timezone.utc)
+    return now - timedelta(days=365 * years), now
+
+
+def _format_arxiv_datetime(value: datetime) -> str:
+    """Format datetimes for arXiv's submittedDate range syntax."""
+    return value.astimezone(timezone.utc).strftime("%Y%m%d%H%M")
+
+
+def _build_topic_search_query(
+    query: str,
+    submitted_after: datetime | None = None,
+    submitted_before: datetime | None = None,
+) -> str:
+    search_query = f"all:{query}"
+    if submitted_after and submitted_before:
+        start = _format_arxiv_datetime(submitted_after)
+        end = _format_arxiv_datetime(submitted_before)
+        search_query = f"{search_query} AND submittedDate:[{start} TO {end}]"
+    return search_query
+
+
+def _dedupe_entries(entries: list[dict]) -> list[dict]:
+    seen: set[str] = set()
+    deduped: list[dict] = []
+    for entry in entries:
+        arxiv_id = normalize_arxiv_id(entry.get("arxiv_id", ""))
+        if not arxiv_id or arxiv_id in seen:
+            continue
+        seen.add(arxiv_id)
+        deduped.append(entry)
+    return deduped
+
+
+def _entry_sort_datetime(entry: dict) -> datetime:
+    value = entry.get("published") or entry.get("updated")
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+    return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _rank_recent_entries(entries: list[dict]) -> list[dict]:
+    """
+    Prefer recency within the relevance-ranked candidate pool.
+
+    arXiv does not expose citation/popularity signals in this API, so the API's
+    relevance order acts as the keyword-quality filter before we locally promote
+    newer submissions.
+    """
+    return sorted(entries, key=_entry_sort_datetime, reverse=True)
+
+
 def _parse_atom_datetime(value: str | None) -> datetime | None:
     """Parse arXiv Atom datetime values into Python datetimes."""
     if not value:
@@ -381,7 +468,13 @@ def _extract_arxiv_id_from_entry(entry: ET.Element) -> str:
     return entry_id or ""
 
 
-async def _fetch_search_via_export_api(query: str, max_results: int) -> list[dict]:
+async def _fetch_search_via_export_api(
+    query: str,
+    max_results: int,
+    submitted_after: datetime | None = None,
+    submitted_before: datetime | None = None,
+    sort_by: str = "relevance",
+) -> list[dict]:
     """
     Fetch multiple papers from export.arxiv.org Atom API by search query.
 
@@ -390,8 +483,12 @@ async def _fetch_search_via_export_api(query: str, max_results: int) -> list[dic
     """
     url = "https://export.arxiv.org/api/query"
     params = {
-        "search_query": f"all:{query}",
-        "sortBy": "relevance",
+        "search_query": _build_topic_search_query(
+            query,
+            submitted_after=submitted_after,
+            submitted_before=submitted_before,
+        ),
+        "sortBy": sort_by,
         "sortOrder": "descending",
         "start": 0,
         "max_results": max_results,
