@@ -72,12 +72,6 @@ export default function TopicGraphPage() {
     }, [nodes, selectedNodeId]);
 
     useEffect(() => {
-        if (nodes.length && !selectedNodeId) {
-            setSelectedNodeId(nodes[0].id);
-        }
-    }, [nodes, selectedNodeId]);
-
-    useEffect(() => {
         if (!jobId || status !== "running") return;
 
         const timer = setInterval(async () => {
@@ -297,14 +291,53 @@ export default function TopicGraphPage() {
                         <div className="grid gap-6">
                             {selectedNode && (
                                 <GlassCard className="p-6">
-                                    <h2 className="text-lg font-semibold text-white">Paper overview</h2>
-                                    <div className="mt-4 space-y-3 text-sm text-white/70">
+                                    <h2 className="text-lg font-semibold text-white">Paper snapshot</h2>
+                                    <div className="mt-4 space-y-4 text-sm text-white/70">
                                         <p className="text-base text-white font-medium">
                                             {selectedNode.title}
                                         </p>
                                         <p className="text-xs text-white/40">
                                             {selectedNode.authors.join(", ")}
                                         </p>
+                                        {selectedNode.abstract_animation_url && (
+                                            <VideoPlayer
+                                                src={selectedNode.abstract_animation_url}
+                                                title="Abstract snapshot"
+                                            />
+                                        )}
+                                        {!selectedNode.abstract_animation_url &&
+                                            selectedNode.abstract_animation_error && (
+                                                <p className="rounded-lg border border-[#f27066]/20 bg-[#f27066]/10 px-3 py-2 text-xs text-[#f27066]">
+                                                    Snapshot animation could not be rendered.
+                                                </p>
+                                            )}
+                                        {selectedNode.abstract_summary && (
+                                            <div>
+                                                <p className="text-xs uppercase tracking-[0.2em] text-white/35">
+                                                    Brief read
+                                                </p>
+                                                <p className="mt-2 text-sm text-white/65 leading-relaxed">
+                                                    {selectedNode.abstract_summary}
+                                                </p>
+                                            </div>
+                                        )}
+                                        {(selectedNode.abstract_key_points?.length ?? 0) > 0 && (
+                                            <div>
+                                                <p className="text-xs uppercase tracking-[0.2em] text-white/35">
+                                                    Key points
+                                                </p>
+                                                <ul className="mt-2 space-y-2">
+                                                    {(selectedNode.abstract_key_points ?? []).map((point, index) => (
+                                                        <li
+                                                            key={`${selectedNode.id}-point-${index}`}
+                                                            className="text-sm text-white/60 leading-relaxed"
+                                                        >
+                                                            {point}
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
                                         <p className="text-sm text-white/60 leading-relaxed">
                                             {selectedNode.abstract}
                                         </p>

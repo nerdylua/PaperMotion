@@ -207,6 +207,10 @@ class TopicGraphNode(BaseModel):
     title: str
     authors: list[str]
     abstract: str
+    abstract_summary: Optional[str] = None
+    abstract_key_points: list[str] = Field(default_factory=list)
+    abstract_animation_url: Optional[str] = None
+    abstract_animation_error: Optional[str] = None
     pdf_url: str
     categories: list[str]
     published: Optional[str] = None

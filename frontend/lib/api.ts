@@ -96,6 +96,10 @@ export interface TopicGraphNode {
   title: string;
   authors: string[];
   abstract: string;
+  abstract_summary?: string | null;
+  abstract_key_points: string[];
+  abstract_animation_url?: string | null;
+  abstract_animation_error?: string | null;
   pdf_url: string;
   categories: string[];
   published?: string | null;
@@ -275,6 +279,10 @@ export async function getTopicGraphStatus(
   const data: TopicGraphStatusResponse = await res.json();
   return {
     ...data,
+    nodes: (data.nodes ?? []).map((node) => ({
+      ...node,
+      abstract_animation_url: resolveVideoUrl(node.abstract_animation_url),
+    })),
     video_url: resolveVideoUrl(data.video_url),
   };
 }

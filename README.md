@@ -8,12 +8,6 @@
    Transform research papers into visual stories
 </p>
 
-[![arXivisual Video](frontend/public/arXivisual.mp4)](https://github.com/user-attachments/assets/5453760b-5f82-4fd1-9a77-fe8818fea059)
-
-![arXivisual Landing Page](frontend/public/landing.jpeg)
-
-![arXivisual Manim](frontend/public/manim.png)
-
 ## How It Works
 
 1. **Ingest**: Paste any arXiv paper URL and watch as it's decomposed into digestible sections
