@@ -22,11 +22,11 @@ import {
 const DEMO_DURATION_MS = 5000;
 const DEMO_TICK_MS = 50;
 const DEMO_STEPS = [
-  { label: "Fetching paper source", at: 0 },
-  { label: "Parsing sections and equations", at: 0.2 },
-  { label: "Analyzing concepts for visualization", at: 0.4 },
-  { label: "Generating animations", at: 0.6 },
-  { label: "Rendering videos", at: 0.8 },
+  { label: "Fetching cached paper", at: 0 },
+  { label: "Loading cached sections", at: 0.2 },
+  { label: "Preparing cached explanations", at: 0.4 },
+  { label: "Loading cached animations", at: 0.6 },
+  { label: "Ready", at: 0.8 },
 ];
 
 function normalizeArxivId(segments: string[] | undefined): string {
@@ -95,6 +95,30 @@ export default function PaperPage({
       return;
     }
 
+    // Demo papers are fully cached on the frontend. Do not send them through
+    // the backend pipeline or a fake processing delay, even if an old URL
+    // still has a jobId query parameter.
+    if (DEMO_PAPER_IDS.has(paperId)) {
+      const demoData = getDemoPaper(paperId);
+      if (demoData) {
+        demoSimRunning.current = true;
+        setState({
+          type: "processing",
+          status: {
+            job_id: "demo",
+            status: "processing",
+            progress: 0,
+            sections_completed: 0,
+            sections_total: demoData.sections.length,
+            current_step: DEMO_STEPS[0].label,
+          },
+        });
+      } else {
+        setState({ type: "error", message: "Demo paper data not found" });
+      }
+      return;
+    }
+
     if (jobIdFromUrl) {
       setJobId(jobIdFromUrl);
       setState({
@@ -106,27 +130,6 @@ export default function PaperPage({
           sections_completed: 0,
           sections_total: 0,
           current_step: "Starting...",
-        },
-      });
-      return;
-    }
-
-    if (!paperId) return;
-
-    // Demo paper: run simulated 5-second processing
-    if (DEMO_PAPER_IDS.has(paperId)) {
-      const demoData = getDemoPaper(paperId);
-      const sectionCount = demoData?.sections.length ?? 5;
-      demoSimRunning.current = true;
-      setState({
-        type: "processing",
-        status: {
-          job_id: "demo",
-          status: "processing",
-          progress: 0,
-          sections_completed: 0,
-          sections_total: sectionCount,
-          current_step: DEMO_STEPS[0].label,
         },
       });
       return;
@@ -179,17 +182,16 @@ export default function PaperPage({
     }
   }, [paperId, hasArxivId]);
 
-  // Demo simulation: animate progress 0→100% over 5 seconds
+  // Demo simulation: animate cached papers for 5 seconds without backend work.
   useEffect(() => {
     if (state.type !== "processing" || !demoSimRunning.current) return;
 
     const totalSections = state.status.sections_total;
     const startTime = Date.now();
-    const timer = setInterval(async () => {
+    const timer = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const progress = Math.min(elapsed / DEMO_DURATION_MS, 1);
 
-      // Find current step label
       let currentStep = DEMO_STEPS[0].label;
       for (const step of DEMO_STEPS) {
         if (progress >= step.at) currentStep = step.label;
@@ -197,25 +199,13 @@ export default function PaperPage({
 
       if (progress >= 1) {
         clearInterval(timer);
-        // Show 100% with all steps "Done" for 800ms before transitioning
-        setState({
-          type: "processing",
-          status: {
-            job_id: "demo",
-            status: "processing",
-            progress: 1,
-            sections_completed: totalSections,
-            sections_total: totalSections,
-            current_step: "Complete",
-          },
-        });
-        setTimeout(async () => {
-          demoSimRunning.current = false;
-          const paper = await getPaper(paperId);
-          if (paper) {
-            setState({ type: "ready", paper });
-          }
-        }, 800);
+        demoSimRunning.current = false;
+        const paper = getDemoPaper(paperId);
+        if (paper) {
+          setState({ type: "ready", paper });
+        } else {
+          setState({ type: "error", message: "Demo paper data not found" });
+        }
         return;
       }
 

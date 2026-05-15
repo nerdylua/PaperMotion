@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -8,6 +9,8 @@ import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
 import { GlassCard } from "@/components/ui/glass-card";
 import { processPaper, processPdfUpload } from "@/lib/api";
+
+const DEMO_PAPER_IDS = new Set(["1706.03762", "2005.14165", "2303.08774"]);
 
 function extractArxivId(inputRaw: string): string | null {
   const input = inputRaw.trim();
@@ -99,6 +102,11 @@ export default function Home() {
     setTouched(true);
     setError(null);
     if (!canSubmit) return;
+
+    if (mode === "arxiv" && parsedValue && DEMO_PAPER_IDS.has(parsedValue)) {
+      router.push(`/abs/${encodeURIComponent(parsedValue)}`);
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -287,21 +295,21 @@ export default function Home() {
                 { id: "2005.14165", label: "GPT-3", icon: "◈" },
                 { id: "2303.08774", label: "GPT-4", icon: "◆" },
               ].map((example) => (
-                <motion.button
+                <motion.div
                   key={example.id}
                   whileHover={{ scale: 1.05, y: -2 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    setMode("arxiv");
-                    setValue(example.id);
-                    setTouched(true);
-                  }}
-                  className="group rounded-xl bg-white/[0.04] px-4 py-2.5 text-sm border border-white/[0.08] transition-all hover:bg-white/[0.07] hover:border-white/[0.14]"
                 >
+                  <Link
+                    href={`/abs/${encodeURIComponent(example.id)}`}
+                    prefetch={false}
+                    className="group block rounded-xl bg-white/[0.04] px-4 py-2.5 text-sm border border-white/[0.08] transition-all hover:bg-white/[0.07] hover:border-white/[0.14]"
+                  >
                   <span className="text-white/40 mr-2">{example.icon}</span>
                   <span className="text-white/60 font-mono">{example.id}</span>
                   <span className="text-white/30 ml-2">({example.label})</span>
-                </motion.button>
+                  </Link>
+                </motion.div>
               ))}
             </motion.div>
           </div>
