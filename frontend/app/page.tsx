@@ -157,10 +157,10 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.5 }}
-              className="text-lg sm:text-xl text-white/40 max-w-2xl mx-auto leading-relaxed font-light"
+              className="text-lg sm:text-xl text-white/70 max-w-2xl mx-auto leading-relaxed font-light"
             >
               Paste any arXiv, DOI, or PDF. Watch as it turns complex papers
-              into digestible and <span className="text-white/60 font-medium">visually</span> appealing video explanations.
+              into digestible and <span className="text-white/90 font-medium">visually</span> appealing video explanations.
             </motion.p>
 
             {/* Input Section */}
@@ -191,8 +191,8 @@ export default function Home() {
                       }}
                       className={
                         option.id === mode
-                          ? "rounded-full bg-white/[0.14] px-4 py-1.5 text-xs uppercase tracking-widest text-white/80 border border-white/[0.25]"
-                          : "rounded-full bg-white/[0.05] px-4 py-1.5 text-xs uppercase tracking-widest text-white/40 border border-white/[0.10] hover:text-white/60 hover:border-white/[0.18]"
+                          ? "rounded-full bg-white/[0.14] px-4 py-1.5 text-xs uppercase tracking-widest text-white border border-white/[0.25]"
+                          : "rounded-full bg-white/[0.05] px-4 py-1.5 text-xs uppercase tracking-widest text-white/70 border border-white/[0.10] hover:text-white/90 hover:border-white/[0.18]"
                       }
                     >
                       {option.label}
@@ -311,6 +311,22 @@ export default function Home() {
                   </Link>
                 </motion.div>
               ))}
+            </motion.div>
+
+            {/* Topic Graph Link */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 1.4 }}
+              className="mt-10 flex justify-center"
+            >
+              <Link
+                href="/topic"
+                className="group flex items-center gap-3 rounded-full border border-white/[0.15] bg-white/[0.05] px-6 py-3 text-sm tracking-[0.1em] text-white/80 uppercase transition-all hover:bg-white/[0.1] hover:border-white/[0.3] hover:text-white"
+              >
+                <span>Explore Topic Graph</span>
+                <span className="text-white/40 transition-transform group-hover:translate-x-1 group-hover:text-white/80">→</span>
+              </Link>
             </motion.div>
           </div>
         </section>

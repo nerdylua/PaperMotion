@@ -166,9 +166,9 @@ export function GlassShard({
             gradientTransform={`rotate(${gradAngle}, 50, 50)`}
             gradientUnits="userSpaceOnUse"
           >
-            <stop offset="0%" stopColor={`rgba(255,255,255,0.10)`} />
-            <stop offset="40%" stopColor={`rgba(255,255,255,0.03)`} />
-            <stop offset="100%" stopColor={`rgba(255,255,255,0.07)`} />
+            <stop offset="0%" stopColor={`rgba(var(--shard-rgb), 0.10)`} />
+            <stop offset="40%" stopColor={`rgba(var(--shard-rgb), 0.03)`} />
+            <stop offset="100%" stopColor={`rgba(var(--shard-rgb), 0.07)`} />
           </linearGradient>
         </defs>
 
@@ -179,7 +179,7 @@ export function GlassShard({
         <polygon
           points={shape.points}
           fill="none"
-          stroke={`rgba(255,255,255,0.14)`}
+          stroke={`rgba(var(--shard-rgb), 0.14)`}
           strokeWidth="0.7"
           strokeLinejoin="bevel"
         />
@@ -196,7 +196,7 @@ export function GlassShard({
               y1={a[1]}
               x2={b[0]}
               y2={b[1]}
-              stroke={`rgba(255,255,255,${brightness})`}
+              stroke={`rgba(var(--shard-rgb), ${brightness})`}
               strokeWidth="1.5"
               strokeLinecap="round"
             />
@@ -210,7 +210,7 @@ export function GlassShard({
             y1={vertices[0][1] * 0.7 + vertices[2][1] * 0.3}
             x2={vertices[1][0] * 0.3 + vertices[3 % vertices.length][0] * 0.7}
             y2={vertices[1][1] * 0.3 + vertices[3 % vertices.length][1] * 0.7}
-            stroke="rgba(255,255,255,0.06)"
+            stroke="rgba(var(--shard-rgb), 0.06)"
             strokeWidth="0.5"
           />
         )}

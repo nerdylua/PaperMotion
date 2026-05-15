@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useCallback } from "react";
+import { useTheme } from "next-themes";
 
 interface MosaicBackgroundProps {
   className?: string;
@@ -41,6 +42,7 @@ export function MosaicBackground({
   logoYFraction = 0.22,
 }: MosaicBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const { resolvedTheme } = useTheme();
 
   const render = useCallback(() => {
     const canvas = canvasRef.current;
@@ -63,6 +65,10 @@ export function MosaicBackground({
     ctx.scale(dpr, dpr);
 
     const rand = createRng(SEED);
+
+    // Get theme color
+    const computedStyle = getComputedStyle(document.documentElement);
+    const shardRgb = computedStyle.getPropertyValue('--shard-rgb').trim() || '255, 255, 255';
 
     // ------------------------------------------------------------------
     // Step 1: Generate jittered point grid
@@ -203,12 +209,12 @@ export function MosaicBackground({
                   // Red zone (the "/" stroke of X)
                   const opacity = (0.25 + rand() * 0.10) * brightnessShift;
                   fillColor = `rgba(${ARXIV_RED.r}, ${ARXIV_RED.g}, ${ARXIV_RED.b}, ${opacity.toFixed(3)})`;
-                  strokeColor = `rgba(255, 255, 255, ${(0.12 + rand() * 0.06).toFixed(3)})`;
+                  strokeColor = `rgba(${shardRgb}, ${(0.12 + rand() * 0.06).toFixed(3)})`;
                 } else {
                   // Gray zone (ar, iv, gray stroke of X)
                   const opacity = (0.20 + rand() * 0.10) * brightnessShift;
                   fillColor = `rgba(${ARXIV_GRAY.r}, ${ARXIV_GRAY.g}, ${ARXIV_GRAY.b}, ${opacity.toFixed(3)})`;
-                  strokeColor = `rgba(255, 255, 255, ${(0.12 + rand() * 0.06).toFixed(3)})`;
+                  strokeColor = `rgba(${shardRgb}, ${(0.12 + rand() * 0.06).toFixed(3)})`;
                 }
               }
             }
@@ -217,8 +223,8 @@ export function MosaicBackground({
           // Background fragment (not part of logo)
           if (!isLogoFragment) {
             const opacity = 0.008 + rand() * 0.010; // 0.008-0.018
-            fillColor = `rgba(255, 255, 255, ${opacity.toFixed(4)})`;
-            strokeColor = `rgba(255, 255, 255, ${(0.025 + rand() * 0.015).toFixed(3)})`;
+            fillColor = `rgba(${shardRgb}, ${opacity.toFixed(4)})`;
+            strokeColor = `rgba(${shardRgb}, ${(0.025 + rand() * 0.015).toFixed(3)})`;
           }
 
           // Draw triangle
@@ -237,7 +243,7 @@ export function MosaicBackground({
         }
       }
     }
-  }, [showLogo, logoYFraction]);
+  }, [showLogo, logoYFraction, resolvedTheme]);
 
   useEffect(() => {
     render();
@@ -266,7 +272,7 @@ export function MosaicBackground({
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(ellipse 60% 50% at 50% 40%, rgba(255,255,255,0.015), transparent)",
+            "radial-gradient(ellipse 60% 50% at 50% 40%, rgba(var(--shard-rgb),0.02), transparent)",
         }}
       />
     </div>

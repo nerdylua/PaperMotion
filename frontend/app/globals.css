@@ -1,7 +1,40 @@
 @import "tailwindcss";
 
 :root {
-  /* Mosaic Fragments - Monochrome Glass Palette */
+  /* Light mode is default */
+  --theme-white: #000000;
+  --theme-black: #fafafa;
+  --background: #fafafa;
+  --foreground: #171717;
+
+  /* Glass surfaces - dark against light background */
+  --glass-white: rgba(0, 0, 0, 0.06);
+  --glass-white-hover: rgba(0, 0, 0, 0.10);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-border-hover: rgba(0, 0, 0, 0.15);
+  --glass-highlight: rgba(0, 0, 0, 0.12);
+
+  /* Accent */
+  --accent: #5a5a5a;
+  --accent-hover: #000000;
+  --accent-green: #3aa562;
+  --accent-red: #d34a41;
+
+  /* Shard colors */
+  --shard-rgb: 0, 0, 0;
+  --shard-1: rgba(0, 0, 0, 0.03);
+  --shard-2: rgba(0, 0, 0, 0.05);
+  --shard-3: rgba(0, 0, 0, 0.02);
+
+  /* Typography */
+  --text-primary: #171717;
+  --text-secondary: rgba(0, 0, 0, 0.55);
+  --text-muted: rgba(0, 0, 0, 0.30);
+}
+
+.dark {
+  --theme-white: #ffffff;
+  --theme-black: #000000;
   --background: #000000;
   --foreground: #e8e8e8;
 
@@ -19,6 +52,7 @@
   --accent-red: #f27066;
 
   /* Shard colors */
+  --shard-rgb: 255, 255, 255;
   --shard-1: rgba(255, 255, 255, 0.03);
   --shard-2: rgba(255, 255, 255, 0.05);
   --shard-3: rgba(255, 255, 255, 0.02);
@@ -32,12 +66,16 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-white: var(--theme-white);
+  --color-black: var(--theme-black);
+  --color-accent-green: var(--accent-green);
+  --color-accent-red: var(--accent-red);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: #000000;
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
@@ -49,17 +87,19 @@ html {
 
 /* Glassmorphism card */
 .glass-card {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--glass-white);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border);
   border-radius: 16px;
 }
 
 .glass-card-hover:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.14);
+  background: var(--glass-white-hover);
+  border-color: var(--glass-border-hover);
 }
+
+
 
 /* Glass shard animations */
 @keyframes shard-float {
@@ -99,29 +139,29 @@ html {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--glass-white-hover);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.20);
+  background: var(--glass-highlight);
 }
 
 /* Selection styling */
 ::selection {
-  background: rgba(255, 255, 255, 0.20);
-  color: white;
+  background: var(--glass-highlight);
+  color: var(--theme-white);
 }
 
-/* KaTeX styling for dark theme */
+/* KaTeX styling */
 .katex {
-  color: #d0d0d0;
+  color: var(--text-primary);
   font-size: 1.05em;
 }
 
 /* Inline math styling */
 .markdown-content .katex:not(.katex-display .katex) {
-  color: #c0c0c0;
+  color: var(--text-secondary);
   font-size: 1.05em;
 }
 
@@ -132,16 +172,16 @@ html {
   align-items: center;
   margin: 2rem -1rem;
   padding: 1.75rem 2rem;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--glass-white);
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border);
   overflow-x: auto;
   overflow-y: hidden;
 }
 
 .markdown-content .katex-display > .katex {
   text-align: center;
-  color: #e0e0e0;
+  color: var(--text-primary);
 }
 
 /* Display math — larger, bolder, and more readable */
@@ -161,17 +201,17 @@ html {
 }
 
 .markdown-content .katex-display::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--glass-white);
   border-radius: 2px;
 }
 
 .markdown-content .katex-display::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--glass-highlight);
   border-radius: 2px;
 }
 
 .markdown-content .katex-display::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.20);
+  background: var(--glass-white-hover);
 }
 
 /* Math colors */
