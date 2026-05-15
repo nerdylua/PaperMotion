@@ -31,13 +31,15 @@ ARXIV_SEARCH_MIN_INTERVAL_SECONDS = float(
     os.getenv("ARXIV_SEARCH_MIN_INTERVAL_SECONDS", "8.0")
 )
 ARXIV_META_MAX_RETRIES = int(os.getenv("ARXIV_META_MAX_RETRIES", "6"))
+ARXIV_SEARCH_MAX_RETRIES = int(os.getenv("ARXIV_SEARCH_MAX_RETRIES", "1"))
 ARXIV_BACKOFF_BASE_SECONDS = float(os.getenv("ARXIV_BACKOFF_BASE_SECONDS", "3.0"))
-ARXIV_429_COOLDOWN_SECONDS = float(os.getenv("ARXIV_429_COOLDOWN_SECONDS", "60"))
+ARXIV_429_COOLDOWN_SECONDS = float(os.getenv("ARXIV_429_COOLDOWN_SECONDS", "300"))
 ARXIV_SEARCH_CACHE_TTL_SECONDS = float(os.getenv("ARXIV_SEARCH_CACHE_TTL_SECONDS", "600"))
 ARXIV_TOPIC_RECENT_YEARS = int(os.getenv("ARXIV_TOPIC_RECENT_YEARS", "3"))
 ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER = int(
-    os.getenv("ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER", "4")
+    os.getenv("ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER", "1")
 )
+ARXIV_TOPIC_SORT_BY = os.getenv("ARXIV_TOPIC_SORT_BY", "submittedDate")
 ARXIV_USER_AGENT = os.getenv(
     "ARXIV_USER_AGENT",
     "arXiviz/0.1 (+https://github.com/nihaa/arXivisual)",
@@ -117,9 +119,9 @@ async def search_arxiv_papers(topic: str, max_results: int = 5) -> list[ArxivPap
         logger.info("arXiv search cache hit for '%s'", query)
         return cached
 
-    candidate_limit = max(
-        max_results,
-        min(25, max_results * max(1, ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER)),
+    candidate_limit = min(
+        10,
+        max_results * max(1, ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER),
     )
     start_date, end_date = _recent_submission_window(recent_years)
     entries = await _fetch_search_via_export_api(
@@ -127,7 +129,7 @@ async def search_arxiv_papers(topic: str, max_results: int = 5) -> list[ArxivPap
         max_results=candidate_limit,
         submitted_after=start_date,
         submitted_before=end_date,
-        sort_by="relevance",
+        sort_by=ARXIV_TOPIC_SORT_BY,
     )
     entries = _rank_recent_entries(entries)
 
@@ -341,12 +343,35 @@ def _build_topic_search_query(
     submitted_after: datetime | None = None,
     submitted_before: datetime | None = None,
 ) -> str:
-    search_query = f"all:{query}"
+    search_query = _build_arxiv_keyword_query(query)
     if submitted_after and submitted_before:
         start = _format_arxiv_datetime(submitted_after)
         end = _format_arxiv_datetime(submitted_before)
         search_query = f"{search_query} AND submittedDate:[{start} TO {end}]"
     return search_query
+
+
+def _build_arxiv_keyword_query(query: str) -> str:
+    """Build a conservative arXiv API query from a plain-language topic."""
+    query = re.sub(r"\s+", " ", (query or "").strip())
+    if not query:
+        raise ValueError("Topic query cannot be empty")
+
+    # Respect advanced users who provide arXiv field prefixes or Boolean syntax.
+    if (
+        re.search(r"\b(ti|au|abs|co|jr|cat|rn|id|all):", query, re.IGNORECASE)
+        or re.search(r"\b(AND|OR|ANDNOT)\b", query)
+        or any(char in query for char in "\"[]()")
+    ):
+        return query
+
+    terms = re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]*", query)
+    if not terms:
+        return f'all:"{query}"'
+    if len(terms) > 1:
+        return f'all:"{" ".join(terms)}"'
+
+    return f"all:{terms[0]}"
 
 
 def _dedupe_entries(entries: list[dict]) -> list[dict]:
@@ -494,7 +519,7 @@ async def _fetch_search_via_export_api(
         "max_results": max_results,
     }
     headers = {"User-Agent": ARXIV_USER_AGENT}
-    max_retries = max(1, ARXIV_META_MAX_RETRIES)
+    max_retries = max(1, ARXIV_SEARCH_MAX_RETRIES)
     last_error: Exception | None = None
 
     for attempt in range(1, max_retries + 1):
@@ -526,7 +551,12 @@ async def _fetch_search_via_export_api(
                     )
                 if attempt == max_retries:
                     break
-                wait = retry_after or _backoff_seconds(attempt)
+                if retry_after is not None:
+                    wait = retry_after
+                elif status_code == 429:
+                    wait = ARXIV_429_COOLDOWN_SECONDS
+                else:
+                    wait = _backoff_seconds(attempt)
                 logger.warning(
                     "arXiv search failed (%s). Retrying in %.1fs (attempt %d/%d)",
                     status_code or type(exc).__name__,
