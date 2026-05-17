@@ -1,5 +1,5 @@
 """
-ArXiviz Backend API - FastAPI Entry Point
+PaperMotion Backend API - FastAPI Entry Point
 
 Run with: uvicorn main:app --reload --port 8000
 Docs at: http://localhost:8000/docs
@@ -7,12 +7,17 @@ Docs at: http://localhost:8000/docs
 
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
-# Load environment variables BEFORE any local imports
-# (rendering/storage.py reads STORAGE_MODE at import time)
+# Load environment variables BEFORE any local imports.
+# Local storage reads MEDIA_DIR at import time.
 load_dotenv()
+
+for stream in (sys.stdout, sys.stderr):
+    if hasattr(stream, "reconfigure"):
+        stream.reconfigure(encoding="utf-8", errors="replace")
 
 # Configure logging
 logging.basicConfig(
@@ -48,7 +53,7 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="ArXiviz API",
+    title="PaperMotion API",
     description="Transform arXiv papers into animated visual explanations",
     version="0.1.0",
     docs_url="/docs",

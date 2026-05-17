@@ -1,5 +1,5 @@
 """
-Paper Ingestion Pipeline for ArXiviz.
+Paper Ingestion Pipeline for PaperMotion.
 
 Main entry point: ingest_paper(arxiv_id) -> StructuredPaper
 

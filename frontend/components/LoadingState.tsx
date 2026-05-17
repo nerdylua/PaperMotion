@@ -12,6 +12,8 @@ const sizeClasses = {
   lg: { spinner: "h-16 w-16", text: "text-base" },
 };
 
+const skeletonWidths = [92, 78, 86, 64, 72, 88];
+
 export function LoadingState({
   message = "Loading...",
   size = "md",
@@ -66,7 +68,7 @@ export function TextSkeleton({
         <div
           key={i}
           className="h-4 animate-pulse rounded bg-white/[0.06]"
-          style={{ width: `${Math.random() * 40 + 60}%` }}
+          style={{ width: `${skeletonWidths[i % skeletonWidths.length]}%` }}
         />
       ))}
     </div>

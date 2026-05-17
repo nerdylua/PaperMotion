@@ -154,7 +154,7 @@ async def process_topic_graph_job(job_id: str, topic: str, max_results: int, mod
                 current_step="Complete",
             )
         except Exception as exc:
-            logger.error("Topic graph job failed: %s", exc)
+            logger.exception("Topic graph job failed")
             await queries.update_topic_graph_job_status(
                 db,
                 job_id,

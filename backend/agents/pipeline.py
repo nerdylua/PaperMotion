@@ -76,12 +76,8 @@ CONCURRENT_ANALYSIS = True
 CONCURRENT_GENERATION = True
 ENABLE_SPATIAL_VALIDATION = True
 
-# Skip local render testing when rendering is offloaded to Modal —
-# Modal has its own complete environment (manim, ffmpeg, cairo, pkg_resources).
-# The local import test fails on hosts without those system deps (e.g. Render native Python).
-RENDER_MODE = os.getenv("RENDER_MODE", "local")
-ENABLE_RENDER_TESTING = RENDER_MODE != "modal"
-ENABLE_M2M2_LAYER = os.getenv("ENABLE_M2M2_LAYER", "true").strip().lower() not in {
+ENABLE_RENDER_TESTING = True
+ENABLE_M2M2_LAYER = os.getenv("ENABLE_M2M2_LAYER", "false").strip().lower() not in {
     "0",
     "false",
     "no",

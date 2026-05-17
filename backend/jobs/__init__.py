@@ -1,5 +1,5 @@
 """
-Jobs package for ArXiviz.
+Jobs package for PaperMotion.
 
 Provides background job processing for paper processing pipeline.
 """

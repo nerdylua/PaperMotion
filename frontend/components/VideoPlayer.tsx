@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 type Props = {
   src: string;
@@ -9,6 +9,9 @@ type Props = {
   autoPlay?: boolean;
   pauseWhenInactive?: boolean;
 };
+
+const PLAYBACK_RATES = [1, 1.25, 1.5, 1.75, 2] as const;
+const VIDEO_PLAY_EVENT = "papermotion-video-play";
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -24,38 +27,47 @@ export function VideoPlayer({
   autoPlay = false,
   pauseWhenInactive = false,
 }: Props) {
+  const playerId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isReady, setIsReady] = useState(false);
-  const [hadError, setHadError] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [progress, setProgress] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [readySrc, setReadySrc] = useState<string | null>(null);
+  const [errorSrc, setErrorSrc] = useState<string | null>(null);
+  const [playbackRate, setPlaybackRate] = useState<(typeof PLAYBACK_RATES)[number]>(1);
+
+  const isReady = readySrc === src;
+  const hadError = errorSrc === src;
 
   const progressPct = useMemo(() => {
     if (!duration) return 0;
     return Math.max(0, Math.min(100, (currentTime / duration) * 100));
   }, [currentTime, duration]);
 
-  useEffect(() => {
-    setIsPlaying(false);
-    setIsReady(false);
-    setHadError(false);
-    setProgress(0);
-    setCurrentTime(0);
-    setDuration(0);
-  }, [src]);
-
   function togglePlay() {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || pauseWhenInactive) return;
     if (v.paused) {
-      void v.play();
+      void v.play().catch(() => setIsPlaying(false));
     } else {
       v.pause();
     }
+  }
+
+  function onPlay() {
+    const v = videoRef.current;
+    if (pauseWhenInactive) {
+      v?.pause();
+      setIsPlaying(false);
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent(VIDEO_PLAY_EVENT, { detail: { playerId } })
+    );
+    setIsPlaying(true);
   }
 
   function onTimeUpdate() {
@@ -124,6 +136,27 @@ export function VideoPlayer({
     v.pause();
   }, [pauseWhenInactive]);
 
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    function pauseWhenAnotherPlayerStarts(event: Event) {
+      const detail = (event as CustomEvent<{ playerId?: string }>).detail;
+      if (detail?.playerId === playerId) return;
+      video?.pause();
+    }
+
+    window.addEventListener(VIDEO_PLAY_EVENT, pauseWhenAnotherPlayerStarts);
+    return () => {
+      window.removeEventListener(VIDEO_PLAY_EVENT, pauseWhenAnotherPlayerStarts);
+      video?.pause();
+    };
+  }, [playerId]);
+
   if (!src) return null;
 
   return (
@@ -142,16 +175,21 @@ export function VideoPlayer({
         preload="metadata"
         autoPlay={autoPlay}
         muted={autoPlay}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={onPlay}
         onPause={() => setIsPlaying(false)}
-        onLoadedData={() => setIsReady(true)}
+        onLoadedData={() => {
+          setReadySrc(src);
+          setErrorSrc(null);
+        }}
         onLoadedMetadata={() => {
           const v = videoRef.current;
           if (!v) return;
+          setCurrentTime(v.currentTime || 0);
           setDuration(v.duration || 0);
+          setProgress(0);
         }}
         onTimeUpdate={onTimeUpdate}
-        onError={() => setHadError(true)}
+        onError={() => setErrorSrc(src)}
       />
 
       {/* Overlay button */}
@@ -159,7 +197,7 @@ export function VideoPlayer({
         type="button"
         onClick={togglePlay}
         aria-label={isPlaying ? "Pause video" : "Play video"}
-        className="absolute inset-0 grid place-items-center bg-black/30 transition hover:bg-black/40"
+        className="absolute inset-0 z-10 grid place-items-center bg-black/30 transition hover:bg-black/40"
       >
         {!isPlaying && (
           <div className="grid h-14 w-14 place-items-center rounded-full bg-white/90 text-black shadow-[0_18px_45px_-25px_rgba(0,0,0,0.9)]">
@@ -176,14 +214,14 @@ export function VideoPlayer({
       </button>
 
       {/* Top-left label */}
-      <div className="pointer-events-none absolute left-3 top-3 rounded-lg bg-black/50 backdrop-blur-md px-2.5 py-1 text-[11px] text-white/60 border border-white/[0.06]">
+      <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-lg bg-black/50 backdrop-blur-md px-2.5 py-1 text-[11px] text-white/60 border border-white/[0.06]">
         {title}
       </div>
 
       {/* Bottom gradient + controls */}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/70 to-transparent" />
 
-      <div className="absolute inset-x-3 bottom-3">
+      <div className="absolute inset-x-3 bottom-3 z-20">
         {hadError ? (
           <div className="rounded-lg bg-[#f27066]/10 px-3 py-2 text-xs text-[#f27066] border border-[#f27066]/20">
             Couldn&apos;t load this video. The URL may be temporary or blocked.
@@ -216,6 +254,23 @@ export function VideoPlayer({
             <div className="rounded-md bg-black/50 backdrop-blur-sm px-2 py-1 text-[11px] text-white/40 border border-white/[0.06]">
               {isReady ? "HD" : "Loading..."}
             </div>
+            <label className="flex items-center gap-1 rounded-md bg-black/50 backdrop-blur-sm px-2 py-1 text-[11px] text-white/50 border border-white/[0.06]">
+              <span className="hidden sm:inline">Speed</span>
+              <select
+                value={playbackRate}
+                onChange={(e) =>
+                  setPlaybackRate(Number(e.target.value) as (typeof PLAYBACK_RATES)[number])
+                }
+                aria-label="Playback speed"
+                className="bg-transparent text-white/70 outline-none"
+              >
+                {PLAYBACK_RATES.map((rate) => (
+                  <option key={rate} value={rate} className="bg-black text-white">
+                    {rate}x
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               onClick={toggleFullscreen}

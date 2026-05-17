@@ -1,38 +1,15 @@
-"""
-Video storage backends for arXivisual.
+"""Local video storage for PaperMotion."""
 
-STORAGE_MODE env var controls which backend is used:
-  - "local" (default): filesystem storage in ./media/videos/
-  - "r2": Cloudflare R2 (S3-compatible) cloud storage
-"""
-
-import asyncio
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-STORAGE_MODE = os.getenv("STORAGE_MODE", "local")
-
-
-# ── Protocol ────────────────────────────────────────────────────
-
-
-class StorageBackend(Protocol):
-    async def save_video(self, video_bytes: bytes, filename: str) -> str: ...
-    def get_video_path(self, video_id: str) -> Optional[Path]: ...
-    def get_video_url(self, video_id: str) -> Optional[str]: ...
-    def list_videos(self) -> list[str]: ...
-    def delete_video(self, video_id: str) -> bool: ...
-
-
-# ── Local Backend ───────────────────────────────────────────────
-
 
 class LocalStorageBackend:
-    """Stores videos on the local filesystem (development default)."""
+    """Stores videos on the local filesystem."""
 
     def __init__(self) -> None:
         self.media_dir = Path(os.getenv("MEDIA_DIR", "./media/videos"))
@@ -41,21 +18,22 @@ class LocalStorageBackend:
     async def save_video(self, video_bytes: bytes, filename: str) -> str:
         if not filename.endswith(".mp4"):
             filename = f"{filename}.mp4"
+
         file_path = self.media_dir / filename
-        logger.debug(f"  [LocalStorage] Writing {len(video_bytes):,} bytes to {file_path}")
+        logger.debug("  [LocalStorage] Writing %s bytes to %s", f"{len(video_bytes):,}", file_path)
         file_path.write_bytes(video_bytes)
-        video_id = filename.replace(".mp4", "")
-        url = f"/api/video/{video_id}"
-        logger.debug(f"  [LocalStorage] File written successfully")
-        return url
+        video_id = filename.removesuffix(".mp4")
+        return f"/api/video/{video_id}"
 
     def get_video_path(self, video_id: str) -> Optional[Path]:
         file_path = self.media_dir / f"{video_id}.mp4"
         if file_path.exists():
             return file_path
+
         file_path = self.media_dir / video_id
         if file_path.exists():
             return file_path
+
         return None
 
     def get_video_url(self, video_id: str) -> Optional[str]:
@@ -74,142 +52,24 @@ class LocalStorageBackend:
         return False
 
 
-# ── R2 Backend ──────────────────────────────────────────────────
-
-
-class R2StorageBackend:
-    """Uploads videos to Cloudflare R2 (S3-compatible) and returns public URLs."""
-
-    def __init__(self) -> None:
-        import boto3
-        from botocore.config import Config
-
-        self.endpoint = os.getenv("S3_ENDPOINT", "")
-        self.bucket = os.getenv("S3_BUCKET", "arxiviz-videos")
-        self.public_url = os.getenv("S3_PUBLIC_URL", "").rstrip("/")
-        access_key = os.getenv("S3_ACCESS_KEY", "")
-        secret_key = os.getenv("S3_SECRET_KEY", "")
-
-        if not all([self.endpoint, access_key, secret_key, self.public_url]):
-            raise ValueError(
-                "R2 storage requires S3_ENDPOINT, S3_ACCESS_KEY, "
-                "S3_SECRET_KEY, and S3_PUBLIC_URL environment variables"
-            )
-
-        self.client = boto3.client(
-            "s3",
-            endpoint_url=self.endpoint,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            config=Config(signature_version="s3v4"),
-        )
-
-    def _key(self, filename: str) -> str:
-        """Build the S3 object key under the videos/ prefix."""
-        if not filename.endswith(".mp4"):
-            filename = f"{filename}.mp4"
-        return f"videos/{filename}"
-
-    async def save_video(self, video_bytes: bytes, filename: str) -> str:
-        key = self._key(filename)
-        logger.debug(f"  [R2Storage] Uploading {len(video_bytes):,} bytes as {key}")
-        for attempt in range(2):
-            try:
-                await asyncio.to_thread(
-                    self.client.put_object,
-                    Bucket=self.bucket,
-                    Key=key,
-                    Body=video_bytes,
-                    ContentType="video/mp4",
-                    CacheControl="public, max-age=31536000",
-                )
-                url = f"{self.public_url}/{key}"
-                logger.info(f"  [R2Storage] Successfully uploaded {filename} to R2")
-                logger.info(f"  [R2Storage] URL: {url}")
-                return url
-            except Exception as e:
-                if attempt == 0:
-                    logger.warning(f"  [R2Storage] Upload failed, retrying: {e}")
-                    await asyncio.sleep(1)
-                else:
-                    logger.error(f"  [R2Storage] Upload failed after retry: {e}")
-                    raise
-
-    def get_video_path(self, video_id: str) -> Optional[Path]:
-        # Cloud storage has no local path
-        return None
-
-    def get_video_url(self, video_id: str) -> Optional[str]:
-        key = self._key(video_id)
-        try:
-            self.client.head_object(Bucket=self.bucket, Key=key)
-            return f"{self.public_url}/{key}"
-        except Exception:
-            return None
-
-    def list_videos(self) -> list[str]:
-        try:
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket, Prefix="videos/"
-            )
-            videos = []
-            for obj in response.get("Contents", []):
-                name = obj["Key"].removeprefix("videos/")
-                if name.endswith(".mp4"):
-                    videos.append(name.removesuffix(".mp4"))
-            return sorted(videos)
-        except Exception as e:
-            logger.error("Failed to list R2 videos: %s", e)
-            return []
-
-    def delete_video(self, video_id: str) -> bool:
-        key = self._key(video_id)
-        try:
-            self.client.delete_object(Bucket=self.bucket, Key=key)
-            return True
-        except Exception as e:
-            logger.error("Failed to delete %s from R2: %s", key, e)
-            return False
-
-    def check_connectivity(self) -> bool:
-        """Quick R2 health check via HEAD bucket."""
-        try:
-            self.client.head_bucket(Bucket=self.bucket)
-            return True
-        except Exception:
-            return False
-
-
-# ── Module-level singleton + public API ─────────────────────────
-
-
-def _create_backend() -> StorageBackend:
-    if STORAGE_MODE == "r2":
-        logger.info("Using R2 cloud storage backend")
-        return R2StorageBackend()
-    else:
-        logger.info("Using local filesystem storage backend")
-        return LocalStorageBackend()
-
-
-_backend = _create_backend()
+_backend = LocalStorageBackend()
 
 
 async def save_video(video_bytes: bytes, filename: str) -> str:
-    """Save video and return its URL (relative for local, absolute for R2)."""
-    logger.info(f"  [Storage] Saving video: {filename} ({len(video_bytes):,} bytes)")
+    """Save video and return its local API URL."""
+    logger.info("  [Storage] Saving video: %s (%s bytes)", filename, f"{len(video_bytes):,}")
     url = await _backend.save_video(video_bytes, filename)
-    logger.info(f"  [Storage] Video saved: {url}")
+    logger.info("  [Storage] Video saved: %s", url)
     return url
 
 
 def get_video_path(video_id: str) -> Optional[Path]:
-    """Get local file path for a video. Returns None for cloud storage."""
+    """Get local file path for a video."""
     return _backend.get_video_path(video_id)
 
 
 def get_video_url(video_id: str) -> Optional[str]:
-    """Get the URL for a video if it exists."""
+    """Get the local API URL for a video if it exists."""
     return _backend.get_video_url(video_id)
 
 
@@ -223,6 +83,6 @@ def delete_video(video_id: str) -> bool:
     return _backend.delete_video(video_id)
 
 
-def get_backend() -> StorageBackend:
-    """Get the active backend instance (for health checks, etc.)."""
+def get_backend() -> LocalStorageBackend:
+    """Get the active backend instance."""
     return _backend

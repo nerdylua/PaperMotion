@@ -17,7 +17,7 @@ PDF_MAX_BYTES = int(os.getenv("PDF_MAX_BYTES", str(50 * 1024 * 1024)))
 PDF_TIMEOUT_SECONDS = float(os.getenv("PDF_TIMEOUT_SECONDS", "60.0"))
 PDF_USER_AGENT = os.getenv(
     "PDF_USER_AGENT",
-    "arXivisual/0.1 (+https://github.com/nihaa/arXivisual)",
+    "PaperMotion/0.1 (+https://github.com/nihaa/PaperMotion)",
 )
 
 

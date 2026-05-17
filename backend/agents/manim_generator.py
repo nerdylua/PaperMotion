@@ -1,11 +1,8 @@
 """Manim Generator Agent - Generates Manim Python code from visualization plans.
 
-Uses OpenAI Responses API + remote MCP Context7 to fetch live Manim documentation
-as the PRIMARY doc source. The static manim_reference.md is kept only as a
-last-resort fallback.
+Uses OpenAI Responses API with the bundled Manim reference prompt.
 """
 
-import logging
 import re
 import sys
 from pathlib import Path
@@ -18,7 +15,6 @@ try:
         GeneratedCode,
         VisualizationType,
     )
-    from .context7_docs import get_manim_docs
 except ImportError:
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from agents.base import BaseAgent
@@ -27,9 +23,6 @@ except ImportError:
         GeneratedCode,
         VisualizationType,
     )
-    from agents.context7_docs import get_manim_docs
-
-logger = logging.getLogger(__name__)
 
 
 class ManimGenerator(BaseAgent):
@@ -204,62 +197,6 @@ class ManimGenerator(BaseAgent):
             tts_setup_snippet=tts_setup_snippet,
         )
 
-    async def _enrich_system_prompt_with_live_docs(
-        self,
-        plan: VisualizationPlan,
-    ) -> str:
-        """
-        Fetch live Manim docs via OpenAI + Context7 MCP as the PRIMARY
-        documentation source, with static manim_reference.md as fallback only.
-        """
-        # Build a topic query based on the visualization plan
-        viz_type = plan.visualization_type.value if hasattr(plan.visualization_type, "value") else str(plan.visualization_type)
-        topic_parts = [
-            "manim",
-            viz_type,
-            plan.concept_name,
-        ]
-        # Add scene-specific topics
-        if viz_type in ("three_d", "3d"):
-            topic_parts.extend(["ThreeDScene", "camera", "3D objects"])
-        elif viz_type in ("equation", "matrix"):
-            topic_parts.extend(["MathTex", "Matrix", "equations"])
-        elif viz_type in ("architecture", "data_flow"):
-            topic_parts.extend(["VGroup", "Arrow", "RoundedRectangle", "arrange"])
-        else:
-            topic_parts.extend(["Scene", "animations", "Create", "FadeIn"])
-
-        topic = " ".join(topic_parts)
-
-        try:
-            live_docs = await get_manim_docs(topic=topic, max_tokens=5000, use_openai=True)
-            if live_docs and len(live_docs) > 100:
-                logger.info(
-                    "  Enriched prompt with %d chars of live Manim docs (OpenAI + Context7 MCP)",
-                    len(live_docs),
-                )
-                # Merge original system prompt with live docs
-                # Keep the base system prompt's instructions and add live docs as primary reference
-                return (
-                    self.system_prompt
-                    + "\n\n"
-                    + "=" * 80
-                    + "\n"
-                    + "# LIVE MANIM API REFERENCE (Context7 MCP + OpenAI Responses)\n"
-                    + "=" * 80
-                    + "\n\n"
-                    + "The following documentation was fetched in real-time from "
-                    + "Context7 using the OpenAI MCP tool interface. Use these references "
-                    + "as the PRIMARY and authoritative source for Manim APIs.\n\n"
-                    + live_docs
-                )
-        except Exception as exc:
-            logger.warning("  Live doc fetch failed (%s), falling back to static docs", exc)
-
-        # Fallback: static manim_reference.md (only used when live sources fail)
-        logger.info("  Using static manim_reference.md as fallback")
-        return self.system_prompt
-
     async def run(
         self,
         plan: VisualizationPlan,
@@ -270,14 +207,7 @@ class ManimGenerator(BaseAgent):
         target_duration_seconds: tuple[int, int] = (30, 45),
         scene_spec_json: str | None = None,
     ) -> GeneratedCode:
-        """Generate Manim code from a plan, optionally with built-in voiceovers.
-
-        Uses OpenAI + Context7 MCP as the primary documentation source.
-        Static docs are only used as a last-resort fallback.
-        """
-        # Fetch live Manim docs via OpenAI + Context7 before generating
-        enriched_system_prompt = await self._enrich_system_prompt_with_live_docs(plan)
-
+        """Generate Manim code from a plan, optionally with built-in voiceovers."""
         prompt = self._build_prompt(
             plan=plan,
             voiceover_enabled=voiceover_enabled,
@@ -288,7 +218,7 @@ class ManimGenerator(BaseAgent):
             scene_spec_json=scene_spec_json,
         )
 
-        text = await self._call_llm(prompt, system_prompt=enriched_system_prompt)
+        text = await self._call_llm(prompt)
 
         code = self._clean_code(text)
         actual_class_name = self._extract_scene_class_name(code)
@@ -317,13 +247,7 @@ class ManimGenerator(BaseAgent):
         target_duration_seconds: tuple[int, int] = (30, 45),
         scene_spec_json: str | None = None,
     ) -> GeneratedCode:
-        """Regenerate code with feedback from previous failures.
-
-        Also uses OpenAI + Context7 MCP for live documentation.
-        """
-        # Fetch live docs for the feedback loop too
-        enriched_system_prompt = await self._enrich_system_prompt_with_live_docs(plan)
-
+        """Regenerate code with feedback from previous failures."""
         base_prompt = self._build_prompt(
             plan=plan,
             voiceover_enabled=voiceover_enabled,
@@ -354,7 +278,7 @@ The previous code had issues. Fix them and regenerate complete code.
 
         prompt = base_prompt + "\n\n" + error_feedback
 
-        text = await self._call_llm(prompt, system_prompt=enriched_system_prompt)
+        text = await self._call_llm(prompt)
 
         code = self._clean_code(text)
         actual_class_name = self._extract_scene_class_name(code)

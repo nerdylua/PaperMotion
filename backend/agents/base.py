@@ -225,8 +225,8 @@ class BaseAgent:
         # Keep self.client for any code that still references it directly
         self.client = _get_client()
 
-        # Log active provider
-        print(f"🔮 OpenAI Responses API → {self.model}")
+        # Log active provider. Keep this ASCII-only for Windows consoles.
+        print(f"OpenAI Responses API -> {self.model}")
 
     def _get_prompts_dir(self) -> Path:
         """Get the prompts directory path."""

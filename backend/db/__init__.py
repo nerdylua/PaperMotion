@@ -1,4 +1,4 @@
-"""Database package for ArXiviz."""
+"""Database package for PaperMotion."""
 
 from .connection import get_db, init_db, engine
 from .models import Base, Paper, Section, Visualization, ProcessingJob, TopicGraphJob

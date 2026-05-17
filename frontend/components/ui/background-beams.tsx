@@ -3,6 +3,11 @@
 import { cn } from "@/lib/utils";
 import React from "react";
 
+function seededRandom(seed: number) {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
+
 export const BackgroundBeams = ({ className }: { className?: string }) => {
   const paths = [
     "M-380 -189C-380 -189 -312 216 152 343C616 470 684 875 684 875",
@@ -65,13 +70,13 @@ export const BackgroundBeams = ({ className }: { className?: string }) => {
                 x1: ["0%", "100%"],
                 x2: ["0%", "95%"],
                 y1: ["0%", "100%"],
-                y2: ["0%", `${93 + Math.random() * 8}%`],
+                y2: ["0%", `${93 + seededRandom(index + 1) * 8}%`],
               }}
               transition={{
-                duration: Math.random() * 10 + 10,
+                duration: seededRandom(index + 101) * 10 + 10,
                 ease: "easeInOut",
                 repeat: Infinity,
-                delay: Math.random() * 10,
+                delay: seededRandom(index + 201) * 10,
               }}
             >
               <stop stopColor="#18CCFC" stopOpacity="0"></stop>
@@ -90,7 +95,7 @@ const motion = {
   path: ({ d, stroke, strokeOpacity, strokeWidth }: { d: string; stroke: string; strokeOpacity: string; strokeWidth: string }) => (
     <path d={d} stroke={stroke} strokeOpacity={strokeOpacity} strokeWidth={strokeWidth} />
   ),
-  linearGradient: ({ id, children, initial, animate, transition }: { id: string; children: React.ReactNode; initial: object; animate: object; transition: object }) => (
+  linearGradient: ({ id, children }: { id: string; children: React.ReactNode; initial: object; animate: object; transition: object }) => (
     <linearGradient id={id}>{children}</linearGradient>
   ),
 };

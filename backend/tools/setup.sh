@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════
-# arXivisual Backend — One-Shot Setup
+# PaperMotion Backend — One-Shot Setup
 # Run: cd backend && bash tools/setup.sh
 #
 # NOTE: We use Text() instead of MathTex() in all Manim scenes
@@ -17,7 +17,7 @@ step() { echo -e "\n${GREEN}▸ $1${NC}"; }
 warn() { echo -e "${YELLOW}  ⚠ $1${NC}"; }
 
 echo "═══════════════════════════════════════════════════"
-echo "  arXivisual Backend Setup"
+echo "  PaperMotion Backend Setup"
 echo "═══════════════════════════════════════════════════"
 
 # ── 1. Homebrew dependencies ──────────────────────────

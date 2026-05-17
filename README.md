@@ -1,8 +1,6 @@
-<h1 align="center">
-  <a href="https://www.arxivisual.org/" target="_blank">arXivisual</a>
-</h1>
+<h1 align="center">PaperMotion</h1>
 <p align="center">
-   Transform research papers into visual stories
+   Transform research papers into visual stories using Manim animations
 </p>
 
 ## How It Works
@@ -13,7 +11,9 @@
 4. **Validate**: Quality gates check syntax, spatial layout, narration, and runtime import stability
 5. **Experience**: Read through an interactive scrollytelling interface with embedded videos
 
-arXivisual also includes cached demos for `1706.03762`, `2005.14165`, and `2303.08774`, plus a topic graph mode that maps related arXiv papers with embeddings and Manim explainers.
+PaperMotion also includes cached demos for `1706.03762`, `2005.14165`, and `2303.08774`, plus a topic graph mode that maps related arXiv papers with embeddings and Manim explainers.
+
+The optional M2M2 (Math-To-Manim) planning layer is disabled by default to keep generation faster. Set `ENABLE_M2M2_LAYER=true` when you want an extra paper-grounded scene-spec pass for math-heavy visualizations.
 
 ## Quick Start
 
@@ -51,4 +51,4 @@ docker compose up
 
 Research papers arrive as monoliths — dense, opaque, intimidating. Within them lies a mosaic of brilliant ideas waiting to be seen.
 
-**arXivisual** transforms fragments of academic text into animated visual explanations, making complex research accessible to everyone.
+**PaperMotion** transforms fragments of academic text into animated visual explanations, making complex research accessible to everyone.

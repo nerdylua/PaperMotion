@@ -4,6 +4,11 @@ import React, { useId, useMemo } from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
+function seededRandom(seed: number) {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
+
 interface SparklesProps {
   className?: string;
   size?: number;
@@ -37,11 +42,11 @@ export const SparklesCore = ({
   const sparkles = useMemo(() => {
     return Array.from({ length: density }, (_, i) => ({
       id: i,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      size: Math.random() * (size - (minSize ?? 0.4)) + (minSize ?? 0.4),
-      duration: Math.random() * 2 + 1,
-      delay: Math.random() * 2,
+      x: seededRandom(i + 1) * 100,
+      y: seededRandom(i + 101) * 100,
+      size: seededRandom(i + 201) * (size - (minSize ?? 0.4)) + (minSize ?? 0.4),
+      duration: seededRandom(i + 301) * 2 + 1,
+      delay: seededRandom(i + 401) * 2,
     }));
   }, [density, size, minSize]);
 

@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  /* Light mode is default */
+  /* Light mode is default. Tailwind white/black are mapped below so existing
+     bg-black/text-white classes invert with the theme. */
   --theme-white: #000000;
   --theme-black: #fafafa;
   --background: #fafafa;

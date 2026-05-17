@@ -1,5 +1,5 @@
 """
-Background job processing for ArXiviz.
+Background job processing for PaperMotion.
 
 Processes papers asynchronously with progress tracking.
 """

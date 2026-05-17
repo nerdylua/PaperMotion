@@ -197,7 +197,7 @@ class HealthResponse(BaseModel):
     services: dict[str, str] = Field(
         ...,
         description="Status of dependent services",
-        examples=[{"database": "connected", "redis": "connected", "modal": "configured"}]
+        examples=[{"database": "connected", "manim": "available", "storage": "local"}]
     )
 
 

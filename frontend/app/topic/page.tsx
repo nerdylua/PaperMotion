@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { MosaicBackground } from "@/components/ui/mosaic-background";
@@ -136,14 +137,31 @@ export default function TopicGraphPage() {
             <MosaicBackground showLogo={false} />
             <ShardField />
 
-            <div className="relative z-10 mx-auto w-full max-w-6xl px-6 py-16">
+            <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.4 }}
+                className="fixed top-5 left-5 z-50"
+            >
+                <Link
+                    href="/"
+                    className="group inline-flex items-center gap-2 rounded-full bg-black/60 backdrop-blur-xl px-4 py-2.5 text-sm text-white/50 border border-white/[0.08] transition-all hover:bg-black/80 hover:text-white/80 hover:border-white/[0.15] shadow-lg shadow-black/30"
+                >
+                    <span className="transition-transform group-hover:-translate-x-0.5">&larr;</span>
+                    <span className="hidden sm:inline">Back</span>
+                </Link>
+            </motion.div>
+
+            <div className="relative z-10 mx-auto w-full max-w-6xl px-6 py-12 sm:py-16">
                 <motion.header
                     initial={{ opacity: 0, y: 16 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6 }}
-                    className="text-center"
+                    className="mx-auto max-w-5xl text-center"
                 >
-                    <p className="text-xs tracking-[0.35em] uppercase text-white/50">Topic Graph</p>
+                    <p className="text-xs tracking-[0.35em] uppercase text-white/50">
+                        Topic graph
+                    </p>
                     <h1 className="mt-3 text-4xl sm:text-5xl font-semibold text-white">
                         Map the paper landscape
                     </h1>
@@ -153,36 +171,36 @@ export default function TopicGraphPage() {
                     </p>
                 </motion.header>
 
-                <GlassCard className="mt-10 p-8">
+                <GlassCard className="mt-9 overflow-hidden border-white/[0.14] bg-white/[0.06] p-6 shadow-[0_30px_120px_-80px_rgba(var(--shard-rgb),0.75)] sm:p-8">
                     <form onSubmit={onSubmit} className="grid gap-6 md:grid-cols-[1.3fr_0.7fr_0.7fr_auto]">
                         <div className="flex flex-col gap-2">
-                            <label className="text-xs uppercase tracking-[0.2em] text-white/50">Topic</label>
+                            <label className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">Topic</label>
                             <input
                                 value={topic}
                                 onChange={(e) => setTopic(e.target.value)}
                                 placeholder="e.g., retrieval augmented generation"
-                                className="rounded-xl bg-white/[0.06] border border-white/[0.12] px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                                className="rounded-2xl bg-black/20 border border-white/[0.14] px-4 py-3 text-sm font-medium text-white placeholder:text-white/35 focus:outline-none focus:border-white/40"
                             />
                         </div>
 
                         <div className="flex flex-col gap-2">
-                            <label className="text-xs uppercase tracking-[0.2em] text-white/50">Max papers</label>
+                            <label className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">Max papers</label>
                             <input
                                 type="number"
                                 min={1}
                                 max={5}
                                 value={maxResults}
                                 onChange={(e) => setMaxResults(Number(e.target.value))}
-                                className="rounded-xl bg-white/[0.06] border border-white/[0.12] px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30"
+                                className="rounded-2xl bg-black/20 border border-white/[0.14] px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-white/40"
                             />
                         </div>
 
                         <div className="flex flex-col gap-2">
-                            <label className="text-xs uppercase tracking-[0.2em] text-white/50">Mode</label>
+                            <label className="text-xs font-semibold uppercase tracking-[0.22em] text-white/55">Mode</label>
                             <select
                                 value={mode}
                                 onChange={(e) => setMode(e.target.value as TopicGraphMode)}
-                                className="rounded-xl bg-white/[0.06] border border-white/[0.12] px-4 py-3 text-sm text-white focus:outline-none focus:border-white/30"
+                                className="rounded-2xl bg-black/20 border border-white/[0.14] px-4 py-3 text-sm font-medium text-white focus:outline-none focus:border-white/40"
                             >
                                 <option value="explanation">Explanation</option>
                                 <option value="comparison">Comparison</option>
@@ -192,7 +210,7 @@ export default function TopicGraphPage() {
                         <div className="flex items-end">
                             <button
                                 type="submit"
-                                className="w-full rounded-xl bg-white text-black px-6 py-3 text-xs uppercase tracking-[0.2em] font-semibold hover:bg-white/90"
+                                className="w-full rounded-2xl bg-white text-black px-6 py-3 text-xs uppercase tracking-[0.22em] font-black hover:bg-white/90"
                             >
                                 Generate
                             </button>
@@ -210,10 +228,16 @@ export default function TopicGraphPage() {
                 </GlassCard>
 
                 {(nodes.length > 0 || status === "done") && (
-                    <div className="mt-12 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-                        <GlassCard className="p-6">
-                            <h2 className="text-lg font-semibold text-white">Similarity graph</h2>
-                            <div className="mt-4 rounded-2xl bg-black/40 border border-white/[0.08] p-4">
+                    <div className="mt-10 grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
+                        <GlassCard className="p-6 border-white/[0.12] bg-white/[0.05]">
+                            <div className="flex items-end justify-between gap-4">
+                                <div>
+                                    <p className="text-xs uppercase tracking-[0.25em] text-white/35">Similarity graph</p>
+                                    <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Research constellation</h2>
+                                </div>
+                                <span className="rounded-full border border-white/[0.12] px-3 py-1 text-xs text-white/45">{nodes.length} papers</span>
+                            </div>
+                            <div className="mt-5 rounded-3xl bg-black/35 border border-white/[0.10] p-4 shadow-inner shadow-black/30">
                                 <svg viewBox="0 0 520 520" className="mx-auto block h-[420px] w-full">
                                     <defs>
                                         <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
@@ -290,8 +314,9 @@ export default function TopicGraphPage() {
 
                         <div className="grid gap-6">
                             {selectedNode && (
-                                <GlassCard className="p-6">
-                                    <h2 className="text-lg font-semibold text-white">Paper snapshot</h2>
+                                <GlassCard className="p-6 border-white/[0.12] bg-white/[0.05]">
+                                    <p className="text-xs uppercase tracking-[0.25em] text-white/35">Paper snapshot</p>
+                                    <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Focused read</h2>
                                     <div className="mt-4 space-y-4 text-sm text-white/70">
                                         <p className="text-base text-white font-medium">
                                             {selectedNode.title}
@@ -362,8 +387,9 @@ export default function TopicGraphPage() {
                                     </div>
                                 </GlassCard>
                             )}
-                            <GlassCard className="p-6">
-                                <h2 className="text-lg font-semibold text-white">Papers</h2>
+                            <GlassCard className="p-6 border-white/[0.12] bg-white/[0.05]">
+                                <p className="text-xs uppercase tracking-[0.25em] text-white/35">Papers</p>
+                                <h2 className="mt-2 text-2xl font-black tracking-[-0.04em] text-white">Corpus</h2>
                                 <div className="mt-4 grid gap-4">
                                     {nodes.map((node) => (
                                         <div

@@ -317,7 +317,7 @@ async def run_demo(max_visualizations: int = 2, verbose: bool = False) -> list[P
     """
     start_time = time.time()
     
-    print_header("ArXiviz Demo - Generating Manim Visualizations")
+    print_header("PaperMotion Demo - Generating Manim Visualizations")
     
     # Create output directory
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -481,7 +481,7 @@ def render_video(filepath: Path, quality: str = "medium", has_voiceover: bool = 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Run ArXiviz demo - Generate Manim visualizations from papers",
+        description="Run PaperMotion demo - Generate Manim visualizations from papers",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

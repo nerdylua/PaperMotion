@@ -11,10 +11,12 @@ import os
 import random
 import re
 import httpx
+from bs4 import BeautifulSoup
 from xml.etree import ElementTree as ET
 from time import monotonic
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import quote_plus
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,7 @@ ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER = int(
 ARXIV_TOPIC_SORT_BY = os.getenv("ARXIV_TOPIC_SORT_BY", "submittedDate")
 ARXIV_USER_AGENT = os.getenv(
     "ARXIV_USER_AGENT",
-    "arXiviz/0.1 (+https://github.com/nihaa/arXivisual)",
+    "PaperMotion/0.1 (+https://github.com/nihaa/PaperMotion)",
 )
 _arxiv_request_lock = asyncio.Lock()
 _last_arxiv_request_ts = 0.0
@@ -124,13 +126,22 @@ async def search_arxiv_papers(topic: str, max_results: int = 5) -> list[ArxivPap
         max_results * max(1, ARXIV_TOPIC_RECENT_CANDIDATE_MULTIPLIER),
     )
     start_date, end_date = _recent_submission_window(recent_years)
-    entries = await _fetch_search_via_export_api(
-        query=query,
-        max_results=candidate_limit,
-        submitted_after=start_date,
-        submitted_before=end_date,
-        sort_by=ARXIV_TOPIC_SORT_BY,
-    )
+    if monotonic() < _arxiv_cooldown_until:
+        logger.warning("arXiv export API is cooling down; using fallback search for '%s'", query)
+        entries = []
+    else:
+        try:
+            entries = await _fetch_search_via_export_api(
+                query=query,
+                max_results=candidate_limit,
+                submitted_after=start_date,
+                submitted_before=end_date,
+                sort_by=ARXIV_TOPIC_SORT_BY,
+            )
+        except Exception as exc:
+            logger.warning("Recent arXiv export search failed for '%s': %s", query, exc)
+            entries = []
+
     entries = _rank_recent_entries(entries)
 
     if len(entries) < max_results:
@@ -139,14 +150,30 @@ async def search_arxiv_papers(topic: str, max_results: int = 5) -> list[ArxivPap
             len(entries),
             query,
         )
-        fallback_entries = await _fetch_search_via_export_api(
-            query=query,
-            max_results=max_results,
-            sort_by="relevance",
-        )
+        fallback_entries: list[dict] = []
+        try:
+            # If export.arxiv.org has just rate-limited us, avoid arxiv.org
+            # entirely and use OpenAlex records that point back to arXiv.
+            if monotonic() < _arxiv_cooldown_until:
+                fallback_entries = await _fetch_search_via_openalex(query, max_results)
+            else:
+                fallback_entries = await _fetch_search_via_export_api(
+                    query=query,
+                    max_results=max_results,
+                    sort_by="relevance",
+                )
+        except Exception as exc:
+            logger.warning("Fallback arXiv export search failed for '%s': %s", query, exc)
+            try:
+                fallback_entries = await _fetch_search_via_openalex(query, max_results)
+            except Exception as openalex_exc:
+                logger.warning("OpenAlex fallback failed for '%s': %s", query, openalex_exc)
+                fallback_entries = await _fetch_search_via_web(query, max_results)
         entries = _dedupe_entries(entries + fallback_entries)
 
     entries = entries[:max_results]
+    if not entries:
+        raise ValueError(f"No arXiv papers found for topic '{query}'")
 
     results: list[ArxivPaperMeta] = []
     for entry in entries:
@@ -404,6 +431,210 @@ def _rank_recent_entries(entries: list[dict]) -> list[dict]:
     newer submissions.
     """
     return sorted(entries, key=_entry_sort_datetime, reverse=True)
+
+
+async def _fetch_search_via_web(query: str, max_results: int) -> list[dict]:
+    """
+    Best-effort fallback using arxiv.org's public search page.
+
+    This avoids `export.arxiv.org` when the Atom API is temporarily rate-limited.
+    The web page does not expose all Atom metadata, but title, authors, abstract,
+    categories, and id are enough for topic graph generation.
+    """
+    url = (
+        "https://arxiv.org/search/"
+        f"?query={quote_plus(query)}"
+        "&searchtype=all"
+        "&abstracts=show"
+        "&order=-announced_date_first"
+        f"&size={max(10, max_results)}"
+    )
+    headers = {
+        "User-Agent": ARXIV_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            timeout = httpx.Timeout(connect=10.0, read=45.0, write=10.0, pool=10.0)
+            async with httpx.AsyncClient(follow_redirects=True, timeout=timeout, headers=headers) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+            break
+        except (httpx.TimeoutException, httpx.HTTPError) as exc:
+            last_error = exc
+            if attempt == 0:
+                await asyncio.sleep(2.0)
+                continue
+            raise ValueError(f"arXiv web search fallback failed for '{query}': {exc}") from exc
+    else:
+        raise ValueError(f"arXiv web search fallback failed for '{query}': {last_error}")
+
+    soup = BeautifulSoup(response.text, "lxml")
+    results: list[dict] = []
+    for item in soup.select("li.arxiv-result"):
+        id_link = item.select_one("p.list-title a[href*='/abs/']")
+        title_el = item.select_one("p.title")
+        abstract_el = item.select_one("span.abstract-full")
+        authors = [
+            author.get_text(" ", strip=True)
+            for author in item.select("p.authors a")
+        ]
+        category_nodes = item.select("div.tags span.tag")
+
+        if not id_link or not title_el:
+            continue
+
+        match = re.search(r"/abs/([^\s?#]+)", id_link.get("href", ""))
+        if not match:
+            continue
+
+        arxiv_id = normalize_arxiv_id(match.group(1))
+        title = re.sub(r"\s+", " ", title_el.get_text(" ", strip=True))
+        abstract = ""
+        if abstract_el:
+            abstract = abstract_el.get_text(" ", strip=True)
+            abstract = re.sub(r"\s*△ Less\s*$", "", abstract).strip()
+
+        categories = [
+            node.get_text(" ", strip=True)
+            for node in category_nodes
+            if node.get_text(" ", strip=True)
+        ]
+
+        results.append(
+            {
+                "arxiv_id": arxiv_id,
+                "title": title,
+                "summary": abstract,
+                "authors": authors,
+                "categories": categories,
+                "published": None,
+                "updated": None,
+            }
+        )
+        if len(results) >= max_results:
+            break
+
+    logger.info("arXiv web search returned %d papers for '%s'", len(results), query)
+    return results
+
+
+def _abstract_from_openalex_index(index: dict | None) -> str:
+    """Convert OpenAlex inverted-index abstracts into plain text."""
+    if not isinstance(index, dict):
+        return ""
+
+    positions: list[tuple[int, str]] = []
+    for word, word_positions in index.items():
+        if not isinstance(word_positions, list):
+            continue
+        for pos in word_positions:
+            if isinstance(pos, int):
+                positions.append((pos, word))
+
+    return " ".join(word for _, word in sorted(positions))
+
+
+def _extract_arxiv_id_from_openalex(work: dict) -> str | None:
+    """Extract an arXiv id from OpenAlex URL/DOI fields."""
+    candidates: list[str] = []
+
+    ids = work.get("ids") or {}
+    if isinstance(ids, dict):
+        candidates.extend(str(value) for value in ids.values() if value)
+
+    primary_location = work.get("primary_location") or {}
+    if isinstance(primary_location, dict):
+        for key in ("landing_page_url", "pdf_url"):
+            value = primary_location.get(key)
+            if value:
+                candidates.append(str(value))
+
+    for location in work.get("locations") or []:
+        if not isinstance(location, dict):
+            continue
+        for key in ("landing_page_url", "pdf_url"):
+            value = location.get(key)
+            if value:
+                candidates.append(str(value))
+
+    patterns = [
+        r"arxiv\.org/(?:abs|pdf)/([^\s?#]+?)(?:\.pdf)?$",
+        r"10\.48550/arxiv\.([^\s?#]+)",
+    ]
+    for candidate in candidates:
+        for pattern in patterns:
+            match = re.search(pattern, candidate, re.IGNORECASE)
+            if match:
+                return normalize_arxiv_id(match.group(1))
+    return None
+
+
+async def _fetch_search_via_openalex(query: str, max_results: int) -> list[dict]:
+    """
+    Last-resort topic fallback using OpenAlex when arXiv is rate-limiting.
+
+    Only OpenAlex records that point back to arXiv are returned so downstream
+    topic graph links and PDF URLs remain compatible with the frontend.
+    """
+    url = "https://api.openalex.org/works"
+    params = {
+        "search": query,
+        "per-page": min(25, max(10, max_results * 3)),
+        "filter": "from_publication_date:2023-01-01",
+    }
+    headers = {"User-Agent": ARXIV_USER_AGENT}
+    async with httpx.AsyncClient(follow_redirects=True, timeout=30.0, headers=headers) as client:
+        response = await client.get(url, params=params)
+        response.raise_for_status()
+
+    payload = response.json()
+    results: list[dict] = []
+    for work in payload.get("results", []):
+        if not isinstance(work, dict):
+            continue
+
+        arxiv_id = _extract_arxiv_id_from_openalex(work)
+        if not arxiv_id:
+            continue
+
+        title = (work.get("title") or work.get("display_name") or "").strip()
+        if not title:
+            continue
+
+        authors = [
+            authorship.get("author", {}).get("display_name", "")
+            for authorship in work.get("authorships", [])
+            if isinstance(authorship, dict)
+        ]
+        authors = [author for author in authors if author]
+
+        concepts = work.get("concepts") or []
+        categories = [
+            concept.get("display_name", "")
+            for concept in concepts[:5]
+            if isinstance(concept, dict) and concept.get("display_name")
+        ]
+
+        results.append(
+            {
+                "arxiv_id": arxiv_id,
+                "title": title,
+                "summary": _abstract_from_openalex_index(work.get("abstract_inverted_index")),
+                "authors": authors,
+                "categories": categories,
+                "published": _parse_atom_datetime(work.get("publication_date")),
+                "updated": None,
+            }
+        )
+        if len(results) >= max_results:
+            break
+
+    logger.info("OpenAlex fallback returned %d arXiv papers for '%s'", len(results), query)
+    return results
 
 
 def _parse_atom_datetime(value: str | None) -> datetime | None:

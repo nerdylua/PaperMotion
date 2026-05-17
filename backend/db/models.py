@@ -1,5 +1,5 @@
 """
-SQLAlchemy database models for ArXiviz.
+SQLAlchemy database models for PaperMotion.
 
 Models:
 - Paper: arXiv paper metadata

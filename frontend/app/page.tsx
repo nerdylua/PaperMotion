@@ -7,7 +7,6 @@ import { motion } from "framer-motion";
 import { PlaceholdersAndVanishInput } from "@/components/ui/placeholders-and-vanish-input";
 import { MosaicBackground } from "@/components/ui/mosaic-background";
 import { ShardField } from "@/components/ui/glass-shard";
-import { GlassCard } from "@/components/ui/glass-card";
 import { processPaper, processPdfUpload } from "@/lib/api";
 
 const DEMO_PAPER_IDS = new Set(["1706.03762", "2005.14165", "2303.08774"]);
@@ -331,60 +330,12 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Pro Tip Card */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 2.2 }}
-          className="mt-20 max-w-2xl mx-auto"
-        >
-          <GlassCard spotlight className="p-8">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="h-12 w-12 rounded-xl bg-white/[0.06] flex items-center justify-center border border-white/[0.10]">
-                <div
-                  className="h-4 w-4 bg-gradient-to-br from-white/50 to-white/20"
-                  style={{ clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" }}
-                />
-              </div>
-              <div>
-                <h3 className="font-semibold text-white/90">Pro Tip</h3>
-                <p className="text-sm text-white/40">One edit turns arXiv into arXivisual</p>
-              </div>
-            </div>
-            <div className="space-y-3 text-sm text-white/45 leading-relaxed">
-              <p>
-                If your link starts with{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  arxiv.org
-                </code>
-                , just add{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  isual
-                </code>
-                {" "}after{" "}
-                <code className="text-white/60 bg-white/[0.06] px-1.5 py-0.5 rounded text-xs font-mono">
-                  arxiv
-                </code>
-                .
-              </p>
-              <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-3">
-                <p className="font-mono text-xs text-white/50">
-                  Before: arxiv.org/abs/1706.03762
-                </p>
-                <p className="font-mono text-xs text-white/70 mt-1">
-                  After:&nbsp;&nbsp;arxivisual.org/abs/1706.03762
-                </p>
-              </div>
-            </div>
-          </GlassCard>
-        </motion.div>
-
         {/* Footer */}
         <motion.footer
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.6, delay: 2.4 }}
-          className="mt-20 flex flex-col items-center justify-between gap-4 border-t border-white/[0.06] pt-8 text-sm sm:flex-row"
+          className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-white/[0.06] pt-8 text-sm sm:flex-row"
         >
           <div className="flex items-center gap-3 text-white/30">
             <motion.div

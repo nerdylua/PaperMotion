@@ -1,19 +1,14 @@
 """
-Rendering package for ArXiviz.
+Rendering package for PaperMotion.
 
-Supports both local (subprocess) and Modal.com (serverless) rendering.
-Set RENDER_MODE environment variable to "local" or "modal".
+Uses local Manim subprocess rendering only.
 """
 
 import logging
-import os
 from .local_runner import render_manim_local, extract_scene_name
 from .storage import save_video, get_video_path, get_video_url, list_videos, get_backend
 
 logger = logging.getLogger(__name__)
-
-# Render mode: "local" or "modal"
-RENDER_MODE = os.getenv("RENDER_MODE", "local")
 
 __all__ = [
     "render_manim_local",
@@ -25,13 +20,12 @@ __all__ = [
     "process_visualization",
     "render_manim",
     "get_backend",
-    "RENDER_MODE",
 ]
 
 
 async def render_manim(code: str, scene_name: str, quality: str = "low_quality") -> bytes:
     """
-    Render Manim code using configured backend (local or Modal).
+    Render Manim code using local Manim.
 
     Args:
         code: Complete Manim Python code
@@ -41,18 +35,7 @@ async def render_manim(code: str, scene_name: str, quality: str = "low_quality")
     Returns:
         MP4 video file as bytes
     """
-    if RENDER_MODE == "modal":
-        import asyncio
-        import modal
-        # Look up the deployed function by app + function name.
-        # This works from any external Python process (Render, scripts, etc.)
-        # unlike direct import which only works inside `modal run`.
-        render_fn = modal.Function.from_name("arxiviz-manim", "render_manim_modal")
-        return await asyncio.to_thread(
-            render_fn.remote, code, scene_name, quality
-        )
-    else:
-        return await render_manim_local(code, scene_name, quality)
+    return await render_manim_local(code, scene_name, quality)
 
 
 async def process_visualization(viz_id: str, manim_code: str, quality: str = "low_quality") -> str:

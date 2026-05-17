@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 .git/
 .env
-arxiviz.db
+papermotion.db
 media/videos/*.mp4
 *.egg-info/
 .pytest_cache/

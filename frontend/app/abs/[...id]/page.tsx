@@ -19,7 +19,7 @@ import {
 } from "@/lib/api";
 
 // --- Demo simulation config ---
-const DEMO_DURATION_MS = 5000;
+const DEMO_DURATION_MS = 8000;
 const DEMO_TICK_MS = 50;
 const DEMO_STEPS = [
   { label: "Fetching cached paper", at: 0 },
@@ -75,6 +75,8 @@ export default function PaperPage({
   const [jobId, setJobId] = useState<string | null>(jobIdFromUrl);
   const [scrollProgress, setScrollProgress] = useState(0);
   const demoSimRunning = useRef(false);
+  const demoSectionsTotal =
+    state.type === "processing" ? state.status.sections_total : 0;
 
   // Staged entrance:
   // 0.0s–0.7s  → pure black
@@ -186,7 +188,7 @@ export default function PaperPage({
   useEffect(() => {
     if (state.type !== "processing" || !demoSimRunning.current) return;
 
-    const totalSections = state.status.sections_total;
+    const totalSections = demoSectionsTotal;
     const startTime = Date.now();
     const timer = setInterval(() => {
       const elapsed = Date.now() - startTime;
@@ -226,7 +228,7 @@ export default function PaperPage({
       clearInterval(timer);
       demoSimRunning.current = false;
     };
-  }, [state.type, paperId]);
+  }, [state.type, demoSectionsTotal, paperId]);
 
   // Real API polling (non-demo papers)
   useEffect(() => {
@@ -411,18 +413,18 @@ function ReadyState({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="space-y-6 pt-8 pb-8"
+        className="space-y-7 pt-6 pb-8"
       >
-        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/[0.04] border border-white/[0.08]">
-          <span className="w-2 h-2 rounded-full bg-white/30" />
-          <span className="text-sm text-white/50">Research Paper</span>
+        <div className="inline-flex items-center gap-3 px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.14] shadow-[0_20px_90px_-60px_rgba(var(--shard-rgb),0.75)]">
+          <span className="w-2 h-2 rounded-full bg-accent-green shadow-[0_0_18px_var(--accent-green)]" />
+          <span className="text-xs font-semibold uppercase tracking-[0.28em] text-white/55">Research Paper</span>
         </div>
 
-        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-medium text-white/90 leading-tight tracking-tight">
+        <h1 className="max-w-5xl text-balance text-4xl font-black leading-[0.98] tracking-[-0.06em] text-white sm:text-6xl lg:text-7xl">
           {paper.title}
         </h1>
 
-        <p className="text-white/40 max-w-2xl">
+        <p className="max-w-3xl text-base font-medium leading-relaxed text-white/50">
           {paper.authors.slice(0, 5).join(", ")}
           {paper.authors.length > 5 && ", et al."}
         </p>
@@ -434,14 +436,14 @@ function ReadyState({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.15 }}
       >
-        <div className="rounded-2xl bg-white/[0.04] p-6 sm:p-8 border border-white/[0.08] backdrop-blur-sm">
-          <h2 className="text-lg font-medium text-white/80 mb-4 flex items-center gap-3">
-            <span className="w-8 h-8 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center text-white/40">
+        <div className="rounded-3xl bg-white/[0.06] p-6 sm:p-8 border border-white/[0.12] backdrop-blur-xl shadow-[0_30px_120px_-80px_rgba(var(--shard-rgb),0.7)]">
+          <h2 className="text-xl font-black tracking-[-0.04em] text-white mb-4 flex items-center gap-3">
+            <span className="w-9 h-9 rounded-xl bg-black/20 border border-white/[0.10] flex items-center justify-center text-white/50">
               &there4;
             </span>
             Abstract
           </h2>
-          <p className="text-white/50 leading-relaxed text-base sm:text-lg">
+          <p className="text-white/60 leading-relaxed text-base sm:text-lg">
             {paper.abstract}
           </p>
         </div>
@@ -581,8 +583,9 @@ function NotFoundState({
           </div>
         </motion.div>
 
-        <div className="mt-8 rounded-2xl bg-black/90 border border-white/10 p-6 sm:p-8 shadow-xl">
-          <h2 className="text-2xl font-medium text-white/90">Paper Not Yet Processed</h2>
+        <div className="mt-8 rounded-3xl bg-black/90 border border-white/[0.14] p-6 sm:p-8 shadow-[0_30px_120px_-75px_rgba(var(--shard-rgb),0.7)]">
+          <p className="text-xs uppercase tracking-[0.25em] text-white/35">Awaiting visualization</p>
+          <h2 className="mt-3 text-3xl font-black tracking-[-0.05em] text-white">Paper Not Yet Processed</h2>
           <p className="mt-4 text-white/70 leading-relaxed">
             This paper (<span className="font-mono text-white/80 bg-white/15 px-2 py-0.5 rounded">{paperId}</span>) hasn&apos;t been visualized yet.
             We&apos;ll parse the content and generate animations for key concepts.
@@ -594,7 +597,7 @@ function NotFoundState({
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={onProcess}
-                className="w-full sm:w-auto rounded-2xl bg-white/[0.08] hover:bg-white/[0.12] px-8 py-4 text-sm font-medium text-white border border-white/[0.15] hover:border-white/[0.25] shadow-xl shadow-white/[0.03] transition-all duration-300"
+                className="w-full sm:w-auto rounded-2xl bg-white px-8 py-4 text-xs font-black uppercase tracking-[0.22em] text-black border border-white hover:bg-white/90 shadow-xl shadow-white/[0.05] transition-all duration-300"
               >
                 Start Processing
               </motion.button>
@@ -676,7 +679,7 @@ function ProcessingState({ status }: { status: ProcessingStatus }) {
         transition={{ duration: 0.8, ease: "easeOut" }}
         className="w-full max-w-2xl"
       >
-        <GlassCard animate={false} className="p-8">
+        <GlassCard animate={false} className="p-8 border-white/[0.14] bg-white/[0.06] shadow-[0_30px_120px_-80px_rgba(var(--shard-rgb),0.7)]">
           {/* Header */}
           <div className="flex items-center gap-5">
             <div className="relative">
@@ -684,8 +687,9 @@ function ProcessingState({ status }: { status: ProcessingStatus }) {
               <div className="absolute inset-0 h-16 w-16 animate-spin rounded-2xl border-2 border-transparent border-t-white/30" style={{ animationDuration: '2s' }} />
             </div>
             <div>
-              <h2 className="text-2xl font-medium text-white/90">Processing Paper</h2>
-              <p className="mt-1 text-white/40">{status.current_step || "Preparing..."}</p>
+              <p className="text-xs uppercase tracking-[0.25em] text-white/35">Pipeline active</p>
+              <h2 className="mt-2 text-3xl font-black tracking-[-0.05em] text-white">Processing Paper</h2>
+              <p className="mt-1 text-white/45">{status.current_step || "Preparing..."}</p>
             </div>
           </div>
 

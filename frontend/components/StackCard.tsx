@@ -195,7 +195,11 @@ export function StackCard({
           {section.videoUrl && (
             <div className="mt-8">
               <div className="rounded-xl overflow-hidden border border-white/[0.06] bg-black/30">
-                <VideoPlayer src={section.videoUrl} title="Visualization" />
+                <VideoPlayer
+                  src={section.videoUrl}
+                  title="Visualization"
+                  pauseWhenInactive={!isActive}
+                />
               </div>
             </div>
           )}

@@ -1,10 +1,10 @@
 /**
- * API client for communicating with the ArXiviz backend (Team 3).
+ * API client for communicating with the PaperMotion backend (Team 3).
  *
  * Supports toggling between mock data and real API via environment variable.
  */
 
-import { DEMO_PAPER_IDS, getDemoPaper, MOCK_PAPER, MOCK_STATUS } from "./mock-data";
+import { getDemoPaper, MOCK_PAPER, MOCK_STATUS } from "./mock-data";
 import type { Paper, ProcessingStatus, Section } from "./types";
 
 // Toggle between mock and real API

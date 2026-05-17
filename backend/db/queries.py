@@ -1,5 +1,5 @@
 """
-Database queries for ArXiviz.
+Database queries for PaperMotion.
 
 CRUD operations for papers, sections, visualizations, and processing jobs.
 """
@@ -445,14 +445,14 @@ async def seed_mock_paper(db: AsyncSession):
             "section_id": "section-3-2",
             "concept": "Scaled Dot-Product Attention",
             "status": "complete",
-            "video_url": "https://placeholder.arxiviz.org/videos/viz_001.mp4",
+            "video_url": "https://placeholder.papermotion.org/videos/viz_001.mp4",
         },
         {
             "id": "viz_002",
             "section_id": "section-3-3",
             "concept": "Multi-Head Attention",
             "status": "complete",
-            "video_url": "https://placeholder.arxiviz.org/videos/viz_002.mp4",
+            "video_url": "https://placeholder.papermotion.org/videos/viz_002.mp4",
         },
     ]
 

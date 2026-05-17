@@ -105,7 +105,10 @@ export function usePaperData(
   // Auto-fetch on mount if enabled
   useEffect(() => {
     if (autoFetch && paperId) {
-      fetchPaper();
+      const timeoutId = window.setTimeout(() => {
+        void fetchPaper();
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, [autoFetch, paperId, fetchPaper]);
 
@@ -141,7 +144,11 @@ export function usePaperWithSections(paperId: string | null | undefined) {
   // Initialize active section when paper loads
   useEffect(() => {
     if (paperData.paper && paperData.paper.sections.length > 0) {
-      setActiveSectionId(paperData.paper.sections[0].id);
+      const firstSectionId = paperData.paper.sections[0].id;
+      const timeoutId = window.setTimeout(() => {
+        setActiveSectionId(firstSectionId);
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, [paperData.paper]);
 

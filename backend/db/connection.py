@@ -1,5 +1,5 @@
 """
-Database connection management for ArXiviz.
+Database connection management for PaperMotion.
 
 Uses SQLite with aiosqlite for local development.
 Automatically switches to PostgreSQL when DATABASE_URL environment variable is set (Railway/Render).
@@ -19,7 +19,7 @@ elif DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 else:
     # Local development fallback
-    DATABASE_URL = "sqlite+aiosqlite:///./arxiviz.db"
+    DATABASE_URL = "sqlite+aiosqlite:///./papermotion.db"
 
 # Create async engine
 engine = create_async_engine(

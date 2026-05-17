@@ -1,5 +1,5 @@
 """
-FastAPI routes for the ArXiviz API.
+FastAPI routes for the PaperMotion API.
 
 Now using SQLite database and local Manim rendering.
 """
@@ -9,7 +9,7 @@ import uuid
 import hashlib
 import tempfile
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, UploadFile, File, Form
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -371,8 +371,7 @@ async def get_video(video_id: str):
     """
     Get a rendered visualization video.
 
-    Returns the actual video file if it exists locally,
-    or redirects to the cloud URL (R2) if available.
+    Returns the actual local video file if it exists.
     """
     # Try local file first
     video_path = get_video_path(video_id)
@@ -382,11 +381,6 @@ async def get_video(video_id: str):
             media_type="video/mp4",
             filename=f"{video_id}.mp4"
         )
-
-    # Try cloud URL (R2 mode)
-    cloud_url = get_video_url(video_id)
-    if cloud_url and cloud_url.startswith("http"):
-        return RedirectResponse(url=cloud_url, status_code=302)
 
     raise HTTPException(
         status_code=404,
@@ -472,40 +466,17 @@ async def health_check(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         manim_status = f"error: {str(e)}"
 
-    # Test storage connectivity
-    from rendering.storage import STORAGE_MODE, get_backend
-    storage_status = "local"
-    if STORAGE_MODE == "r2":
-        backend = get_backend()
-        if hasattr(backend, "check_connectivity"):
-            try:
-                storage_status = "r2: connected" if backend.check_connectivity() else "r2: unreachable"
-            except Exception as e:
-                storage_status = f"r2: error ({e})"
-        else:
-            storage_status = "r2: configured"
-
-    # Check Modal configuration
-    from rendering import RENDER_MODE
-    modal_status = "not configured"
-    if RENDER_MODE == "modal":
-        modal_token = os.getenv("MODAL_TOKEN_ID")
-        modal_status = "configured" if modal_token else "missing MODAL_TOKEN_ID"
-
-    # When using Modal, manim doesn't need to be local
-    if RENDER_MODE == "modal":
-        all_healthy = db_status == "connected"
-    else:
-        all_healthy = db_status == "connected" and "available" in manim_status
+    from rendering.storage import get_backend
+    storage_backend = get_backend()
+    storage_status = f"local ({storage_backend.media_dir})"
+    all_healthy = db_status == "connected" and "available" in manim_status
 
     return HealthResponse(
         status="healthy" if all_healthy else "degraded",
         version="0.1.0",
         services={
             "database": db_status,
-            "manim": manim_status if RENDER_MODE != "modal" else f"offloaded to modal ({manim_status})",
+            "manim": manim_status,
             "storage": storage_status,
-            "redis": "not configured",
-            "modal": modal_status
         }
     )
