@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# arXivisual Frontend
 
-## Getting Started
+Next.js app for the arXivisual scrollytelling reader. It accepts arXiv IDs/URLs, DOIs, direct PDF URLs, and PDF uploads, then talks to the backend processing API or serves cached demo papers.
 
-First, run the development server:
+## Routes
+
+- `/`: landing page and paper input modes.
+- `/abs/[...id]`: processing state and card-stack paper reader.
+- `/topic`: arXiv topic graph UI with SVG graph, paper snapshots, and explainer video.
+
+## Quick Start
 
 ```bash
+cd frontend
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Configuration
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `NEXT_PUBLIC_API_URL`: backend base URL, defaults to `http://localhost:8000`.
+- `NEXT_PUBLIC_USE_MOCK=true`: use mock API responses.
 
-## Learn More
+Demo paper IDs `1706.03762`, `2005.14165`, and `2303.08774` bypass the backend through `lib/mock-data.ts`.
 
-To learn more about Next.js, take a look at the following resources:
+## Checks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm run build
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Notes
 
-## Deploy on Vercel
+The active reader uses `components/CardStack.tsx` and `components/StackCard.tsx`. Markdown and math rendering are handled by `components/MarkdownContent.tsx`; video playback is handled by `components/VideoPlayer.tsx`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Styling uses Tailwind CSS v4, Framer Motion, glassmorphism primitives, and `next-themes`.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

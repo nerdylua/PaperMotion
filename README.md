@@ -1,6 +1,3 @@
-<div align="center">
-    <img alt="Logo" src="frontend/public/icon.png" width=100 />
-</div>
 <h1 align="center">
   <a href="https://www.arxivisual.org/" target="_blank">arXivisual</a>
 </h1>
@@ -10,11 +7,13 @@
 
 ## How It Works
 
-1. **Ingest**: Paste any arXiv paper URL and watch as it's decomposed into digestible sections
+1. **Ingest**: Paste an arXiv ID/URL, DOI, direct PDF URL, or upload a PDF
 2. **Analyze**: AI agents analyze each section to identify key concepts and visual opportunities
-3. **Generate**: Multi-agent pipeline creates 3Blue1Brown-style Manim animations for complex ideas
-4. **Validate**: Four-stage quality gates ensure syntactic correctness, spatial coherence, and runtime stability
-5. **Experience**: Read through an interactive scrollytelling interface with embedded animated visualizations
+3. **Generate**: Multi-agent pipeline creates 3Blue1Brown-style Manim animations with optional voiceover
+4. **Validate**: Quality gates check syntax, spatial layout, narration, and runtime import stability
+5. **Experience**: Read through an interactive scrollytelling interface with embedded videos
+
+arXivisual also includes cached demos for `1706.03762`, `2005.14165`, and `2303.08774`, plus a topic graph mode that maps related arXiv papers with embeddings and Manim explainers.
 
 ## Quick Start
 
@@ -29,11 +28,7 @@
 
 ```bash
 cd frontend
-```
-```bash
 npm install
-```
-```bash
 npm run dev
 ```
 
@@ -41,15 +36,15 @@ npm run dev
 
 ```bash
 cd backend
-```
-```bash
 cp .env.example .env          # Add your API keys
-```
-```bash
 uv sync
-```
-```bash
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Docker Compose runs the backend only:
+
+```bash
+docker compose up
 ```
 
 ## Inspiration
