@@ -15,6 +15,12 @@ PaperMotion also includes cached demos for `1706.03762`, `2005.14165`, and `2303
 
 The optional M2M2 (Math-To-Manim) planning layer is disabled by default to keep generation faster. Set `ENABLE_M2M2_LAYER=true` when you want an extra paper-grounded scene-spec pass for math-heavy visualizations.
 
+## Architecture
+
+PaperMotion splits into a Next.js reader and a FastAPI backend. Jobs run as FastAPI background tasks (not a dedicated queue): the paper pipeline ingests sources, formats sections with an LLM, runs the visualization agents with validation gates, renders Manim locally, and persists SQLite/Postgres rows plus MP4 assets. Topic-graph mode performs an embedding-based paper search with its own shorter render path. Details for contributors live in [`AGENTS.md`](AGENTS.md).
+
+![PaperMotion system architecture overview](docs/paper-motion-architecture.png)
+
 ## Quick Start
 
 ### Prerequisites
